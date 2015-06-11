@@ -13,17 +13,12 @@ and inspired us to kick off the project.
 ## Project status
 
 ```
-11.08.2013: Due to chronic lack of time, current SublimeScala team decided to step down from the project.
+11.06.2015: Project moved to Ensime organisation.
 
-We are currently looking for folks who would take up the challenge of maintaining sublime-ensime.
-This implies addressing the remaining integration problems (e.g. dealing with unicode properly or 
-figuring out why ENSIME frequently fails "go to definition" requests) and implementing the features
-that you find useful (e.g. refactorings, add missing import, better debugging, etc).
+With the kind permission of the original authors this project has been moved under the Ensime umbrella.
+It is currently in a non-working state.  Please ignore the below instructions - we are working on bringing 
+it up to date and into a workable state as soon as possible - watch this space!
 
-The foundation of the plugin (logging, process hosting, remote communications, state sharing between
-plugin components) looks more or less solid, so contributing is usually about doing useful things
-rather than fighting with the infrastructure. Therefore, if you're interested in having an intelligent
-and customizable development tool for Scala, this project will be a fun way to spend your time.
 ```
 
 This is a beta version. Basic things will work (for example, error highlighting),
