@@ -1,18 +1,16 @@
 # Sublime ENSIME
 
 This project provides integration with ENSIME and Sublime Text Editor 2.
-It's a fork of the original sublime-ensime project, written by Ivan Porto Carrero.
-This fork introduces additional features, stability improvements, user-friendly setup and error messages,
-better logging.
-
-Sublime ENSIME strives to realize the dream of having Scala semantic services
-inside a lightning fast and feature-rich text editor. Big thanks to Aemon Cannon,
-Daniel Spiewak and Ivan Porto Carrero who demonstrated that this vision is possible
-and inspired us to kick off the project.
-
+It has recently moved to the Ensime project and is in the process of being re-enlivened - so watch this space.
 ## Project status
 
 ```
+19.06.2015: It lives 
+
+We now have a version that starts and works (at least for some bits) - you need to follow the 'getting it going' steps below carefully, all other startup options will fail right now.
+
+Have fun, come and join the party and hack on Ensime-Sublime
+
 11.06.2015: Project moved to Ensime organisation.
 
 With the kind permission of the original authors this project has been moved under the Ensime umbrella.
@@ -21,13 +19,46 @@ it up to date and into a workable state as soon as possible - watch this space!
 
 ```
 
-This is a beta version. Basic things will work (for example, error highlighting),
-but there might still be problems. Please submit issues to our tracker
-if you catch SublimeScala misbehaving: https://github.com/sublimescala/sublime-ensime/issues/new.
+This is a beta version.  It has been hacked to get it working against an up to date Ensime, but many things are likely to be broken.  Jump to source and error hightlight have been seen to work at least once ;)
+Please submit issues to our tracker: https://github.com/ensime/ensime-sublime/issues/new
+
+## Getting it going
+As mentioned above we are in the process of bringing this project back to life - it works (well we think it does) but you have to jump through a bunch of hoops to get it working.
+
+### Setup plugin
+1. Install Sublime Text 2 (work need ) 
+2. Clone this project (lets return to this as $PLUGIN) 
+3. Symlink ```~/Library/Application Support/Sublime Text 2/Packages/Ensime``` to $PLUGIN
+4. Restart Sublime
+
+Later the plugin will be deployed using Package Control, but thats on the todo list.
+
+### Prepare project
+1. Checkout your project into $PROJECT
+1. Add the Ensime sbt plugin to the project or to your user sbt configuration (see https://github.com/ensime/ensime-server/wiki/Quick-Start-Guide) for details of installing the plugin - ignore the Emacs bits.
+2. run ```sbt gen-ensime``` to create a ```.ensime``` file
+
+### Configure Ensime-Sublime plugin
+
+1. ``` Preference -> Package Settings -> Ensime -> Settings User ->
+2. Add the below entires to the file (replacing $PROJECT with the path)
+
+```
+  "connect_to_external_server": true,
+  "error_highlight": true,
+  "external_server_port_file": "$PROJECT/.ensime_cache/port",
+```
+
+### Start server and link in Sublime
+1. Run $PLUGIN/serverStart.sh $PROJECt/.ensime (works with linux and mac) - starts an ensime instance for your project
+2. In Sublime  - create a new window and within it do ```Project -> New Project``` and select $PROJECT as the root.
+3. Open the Sublime command palette (typically bound to `Ctrl+Shift+P` on Windows/Linux and `Cmd+Shift+P` on Mac) and type `Ensime: Startup`.
+
+With luck - if you open a scala file in your project, you should hav error highlighting (on save) and jump to definition working!
 
 ## Features
 
-* Natively targets Scala 2.10.x, also supports Scala 2.9.x.
+* Supports scala 2.9-2.11
 
 * Creates and understands `.ensime` projects (maximum one project per Sublime window,
   if you have a project with multiple subprojects only a single subproject will be available at a time).

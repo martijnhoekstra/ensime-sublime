@@ -68,7 +68,8 @@ class Type(ActiveRecord):
   def populate(self, m):
     self.name = m[":name"]
     self.type_id = m[":type-id"]
-    if ":arrow-type" in m:
+    isArrowType = bool(m[":arrow-type"]) if ":arrow-type" in m else False
+    if isArrowType:
       self.arrow_type = True
       self.result_type = Type.parse(m[":result-type"])
       self.param_sections = Params.parse_list(m[":param-sections"]) if ":param-sections" in m else []
@@ -306,8 +307,11 @@ def async_rpc(*args):
       else: on_complete = None
       req = _mk_req(func, *args, **kwargs)
       def callback(payload):
+#        log_client("Async_rpc.callback: " + str(payload))
         data = parser(payload)
-        if (on_complete): on_complete(data)
+        if (on_complete): 
+          on_complete(data)
+#      log_client("registering callback " + str(callback))
       self.env.controller.client.async_req(req, callback, call_back_into_ui_thread = True)
     return wrapped
   return wrapper
@@ -329,7 +333,7 @@ class Rpc(object):
     self.env = env
 
   @async_rpc()
-  def init_project(self, conf): pass
+  def init_project(self): pass
 
   @sync_rpc()
   def shutdown_server(self): pass

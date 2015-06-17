@@ -482,7 +482,7 @@ class Client(ClientListener, EnsimeCommon):
     msg_str = "%06x" % len(msg_str) + msg_str
 
     self.feedback(msg_str)
-    self.log_client("SEND ASYNC REQ: " + msg_str)
+    self.log_client("async_req: " + str(msg_id) + "  " + msg_str)
     self.socket.send(encode_if_unicode(msg_str))
 
   def sync_req(self, to_send, timeout=0):
@@ -507,7 +507,7 @@ class Client(ClientListener, EnsimeCommon):
       return None
 
   def on_client_async_data(self, data):
-    self.log_client("SEND ASYNC RESP: " + str(data))
+    self.log_client("on_client_async_data: " + str(data))
     self.feedback(str(data))
     self.handle_message(data)
 
@@ -520,17 +520,19 @@ class Client(ClientListener, EnsimeCommon):
     # (:typecheck-result (:lang :scala :is-full t :notes nil))
     msg_type = str(data[0])
     handler = self.handlers.get(msg_type)
-
     if handler:
+      self.log_client("handleMessage: got handler" + str(handler))
       handler, _, _ = handler
       msg_id = data[-1] if msg_type == ":return" else None
       data = data[1:-1] if msg_type == ":return" else data[1:]
       payload = None
       if len(data) == 1: payload = data[0]
       if len(data) > 1: payload = data
+      self.log_client("handleMessage: got handler2")
+      self.log_client("XXX Got msg_id " + str(msg_id) + "  payload " + str(payload))
       return handler(msg_id, payload)
     else:
-      self.log_client("unexpected message type: " + msg_type)
+      self.log_client("handle_message: unexpected message type: " + msg_type)
 
   def message_return(self, msg_id, payload):
     handler, call_back_into_ui_thread, req_time = self.handlers.get(msg_id)
@@ -867,7 +869,7 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
     self.status_message("Initializing Ensime server... ")
     def init_project(subproject_name):
       conf = self.env.project_config + [key(":active-subproject"), subproject_name]
-      self.rpc.init_project(conf)
+      self.rpc.init_project()
     dotensime.select_subproject(self.env.project_config, self.owner, init_project)
 
   def shutdown(self):
@@ -1305,6 +1307,7 @@ class EnsimeInspectTypeAtPoint(RunningProjectFileOnly, EnsimeTextCommand):
     self.rpc.type_at_point(self.v.file_name(), pos, self.handle_reply)
 
   def handle_reply(self, tpe):
+    self.log_client("EnsimeInspectTypeAtPoint.handleReply: " + str(tpe))
     if tpe and tpe.name != "<notype>":
       if tpe.arrow_type:
         # summary = "method type"
