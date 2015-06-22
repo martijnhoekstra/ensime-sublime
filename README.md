@@ -84,55 +84,14 @@ With luck - if you open a scala file in your project, you should hav error highl
   configurations, step through programs in the debugger, inspect program output, navigate stack traces
   and watch values of local variables. Things are far from smooth, but it might be worth a try.
 
-## How to install?
+## Additional Sublime Configurations
 
-1. Install the package itself:
-
-    a. If you use [Package Control](http://wbond.net/sublime_packages/package_control), install package Ensime.
-    (`Preferences > Package Control > Install Package > Ensime`).
-
-    b. Otherwise install manually.
-       In your Sublime Text `Packages` directory, invoke:
-
-    ```
-    git clone git://github.com/sublimescala/sublime-ensime.git Ensime
-    ```
-
-    You can find the `Packages` directory by opening Sublime, selecting `View > Show Console`
-    and then running the `sublime.packages_path()` command.
-    Make sure you're using the right directory, or the plugin won't work.
-
-2. Install the ENSIME server:
-
-    Download Ensime from http://download.sublimescala.org.
-    The archive will contain a directory with an Ensime version.
-    
-    Make sure to download the build which matches your Scala version.
-    The primary development platform of Ensime is 2.10.x, but 2.9.x is supported as well
-    (though availability of builds of 2.9.x might lag behind). Every once in a while,
-    the plugin might undergo updates which will require fresh Ensime builds. If there's
-    no 2.9.x build of required version, please [ping us](https://github.com/sublimescala/sublime-ensime/issues/68)
-    or compile Ensime from sources (it's as easy as running `sbt ++2.9.2 package`).
-
-    Extract the contents of this directory into the `server` subdirectory
-    of just created `Ensime` directory. If you do everything correctly,
-    `Ensime/server/bin` will contain Ensime startup scripts and
-    `Ensime/server/lib` will contain Ensime binaries.
-
-3. (Re)start Sublime Text editor.
-
-4. Configure Ensime.
-
-    a. Use `Preferences > Package Settings > Ensime` (Windows/Linux) or
-       `Sublime Text 2 > Preferences > Package Settings > Ensime` (Mac)
-       to configure different aspects of this plugin.
-
-    b. By default Ensime customizes mouse bindings. It makes
+* By default Ensime customizes mouse bindings. It makes
        `Ctrl+Click`/`Cmd+Click` invoke `Go to Definition` and `Alt+Click` stand for `Inspect Type at Point`.
        If you want to disable these bindings or change them bindings to something else,
        adjust the config at `Preferences > Package Settings > Mousemap - Default`.
 
-    c. For Windows users, make sure the `Line Endings` setting is set to `Unix`.
+* For Windows users, make sure the `Line Endings` setting is set to `Unix`.
        You may do this by going to `View > Line Endings` and selecting `Unix`.
 
 ## How to use?
@@ -149,7 +108,7 @@ or `ensime` if it doesn't. Keep an eye on this message - it's an indicator of th
 
 ## Troubleshooting
 
-If you find that some features of Ensime are not working properly (i.e. Go To Definition or Error Highlighting), then check the `Line Endings` setting in Sublime Text 2.  On Windows, the line endings is set to `Windows` by default.  Simply change this setting to `Unix` by going to `View > Line Endings` and selecting `Unix`.
+If you find that some features of Ensime are not working properly (i.e. Go To Definition or Error Highlighting), then check the `Line Endings` setting in Sublime Text.  On Windows, the line endings is set to `Windows` by default.  Simply change this setting to `Unix` by going to `View > Line Endings` and selecting `Unix`.
 
 ## Contacts
 
