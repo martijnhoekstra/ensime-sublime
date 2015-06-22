@@ -28,7 +28,7 @@ As mentioned above we are in the process of bringing this project back to life -
 ### Setup plugin
 1. Install Sublime Text 2 (work need ) 
 2. Clone this project (lets return to this as $PLUGIN) 
-3. Symlink ```~/Library/Application Support/Sublime Text 2/Packages/Ensime``` to $PLUGIN
+3. Symlink ```~/Library/Application Support/Sublime Text 2/Packages/Ensime``` (Mac) or ```/.config/sublime-text-2/Packages/Ensime``` (linux) to $PLUGIN
 4. Restart Sublime
 
 Later the plugin will be deployed using Package Control, but thats on the todo list.
@@ -153,6 +153,4 @@ If you find that some features of Ensime are not working properly (i.e. Go To De
 
 ## Contacts
 
-In case if something goes wrong, let us know at dev@sublimescala.org or
-submit an issue to the tracker https://github.com/sublimescala/sublime-ensime/issues/new.
-Regards, the SublimeScala team.
+Submit issues on the tracker https://github.com/ensime/ensime-sublime/issues or come find us on the https://gitter.im/ensime/ensime-server Gitter channel
