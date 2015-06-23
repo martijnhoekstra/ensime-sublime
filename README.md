@@ -1,5 +1,7 @@
 # Sublime ENSIME
 
+[![Join the chat at https://gitter.im/ensime/ensime-sublime](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/ensime/ensime-sublime?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 This project provides integration with ENSIME and Sublime Text Editor 2.
 It has recently moved to the Ensime project and is in the process of being re-enlivened - so watch this space.
 ## Project status
