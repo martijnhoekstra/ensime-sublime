@@ -26,7 +26,7 @@ class ActiveRecord(object):
     return self
 
   def unparse(self):
-    raise Exception("abstract method: ActiveRecord.unparse")
+    raise Exception("abstract method: ActiveRecord.unparse - on " + str(this))
 
   def __str__(self):
     return str(self.__dict__)
@@ -40,6 +40,11 @@ class Note(ActiveRecord):
     self.end = m[":end"]
     self.line = m[":line"]
     self.col = m[":col"]
+
+class CompletionInfoList(ActiveRecord):
+  def populate(self, m):
+    self.prefix = m[":prefix"]
+    self.completions = Completion.parse_list(m[":completions"])
 
 class Completion(ActiveRecord):
   def populate(self, m):
@@ -175,9 +180,25 @@ class DebugBacktrace(ActiveRecord):
     self.thread_id = m[":thread-id"]
     self.thread_name = m[":thread-name"]
 
+class SourceFileInfo(ActiveRecord):
+  def populate(self, m):
+    self.file = m[":file"]
+    self.contents = m[":contents"] if ":contents" in m else None
+    self.contentsIn = m[":contentsIn"] if ":contentsIn" in m else None
+
+  def __init__(self, file_name, contents = None, contentsIn = None):
+    self.file = file_name
+    self.contents = contents
+    self.contentsIn = contentsIn
+
+  def unparse(self):
+    return [[key(":file"), self.file]]
+
+
 class DebugStackFrame(ActiveRecord):
   def populate(self, m):
-    self.index = m[":index"]
+    self.ind
+    ex = m[":index"]
     self.locals = DebugStackLocal.parse_list(m[":locals"]) if ":locals" in m else []
     self.num_args = m[":num-args"]
     self.class_name = m[":class-name"]
@@ -339,12 +360,12 @@ class Rpc(object):
   def shutdown_server(self): pass
 
   @async_rpc()
-  def typecheck_file(self, file_name): pass
+  def typecheck_file(self, file): pass
 
   @async_rpc()
   def patch_source(self, file_name, edits): pass
 
-  @sync_rpc(Completion.parse_list)
+  @sync_rpc(CompletionInfoList.parse)
   def completions(self, file_name, position, max_results, case_sensitive, reload_from_disk): pass
 
   @async_rpc(Type.parse)

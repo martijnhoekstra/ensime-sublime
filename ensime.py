@@ -913,12 +913,12 @@ class Daemon(EnsimeEventListener):
   def on_load(self):
     # print "on_load"
     if self.is_running() and self.in_project():
-      self.rpc.typecheck_file(self.v.file_name())
+      self.rpc.typecheck_file(SourceFileInfo(self.v.file_name()))
 
   def on_post_save(self):
     # print "on_post_save"
     if self.is_running() and self.in_project():
-      self.rpc.typecheck_file(self.v.file_name())
+      self.rpc.typecheck_file(SourceFileInfo(self.v.file_name()))
     if same_paths(self.v.file_name(), self.env.session_file):
       self.env.load_session()
       self.redraw_all_breakpoints()
@@ -1126,6 +1126,7 @@ class Completer(EnsimeEventListener):
     """Given a ensime CompletionSignature structure, returns a short
     string suitable for showing in the help section of the completion
     pop-up."""
+    return str(signature) #TODO Fix this
     sections = signature[0] or []
     section_param_strs = [[param[1] for param in params] for params in sections]
     section_strs = ["(" + ", ".join(tpes) + ")" for tpes in
@@ -1135,6 +1136,9 @@ class Completer(EnsimeEventListener):
   def _signature_snippet(self, signature):
     """Given a ensime CompletionSignature structure, returns a Sublime Text
     snippet describing the method parameters."""
+    return "" 
+    # TODO commented out as signature is not in the expected form right now - not sure what the change is to fix it so HACK HACK HACK
+
     snippet = []
     sections = signature[0] or []
     section_snippets = []
@@ -1151,9 +1155,12 @@ class Completer(EnsimeEventListener):
   def _completion_response(self, ensime_completions):
     """Transform list of completions from ensime API to a the structure
     necessary for returning to sublime API."""
+    for c in ensime_completions.completions:
+      print str(c.name) + "\t" + str(c.signature)   + "\t" + str(c.is_callable) + "\t" + str(c.type_id) + "\t" + str(c.to_insert)
+
     return ([(c.name + "\t" + self._signature_doc(c.signature),
               c.name + self._signature_snippet(c.signature))
-             for c in ensime_completions],
+             for c in ensime_completions.completions],
             sublime.INHIBIT_EXPLICIT_COMPLETIONS |
             sublime.INHIBIT_WORD_COMPLETIONS)
 
@@ -1169,10 +1176,16 @@ class Completer(EnsimeEventListener):
       return self._completion_response([])
     else:
       self.env.completion_ignore_prefix = None
+
+
     if self.v.is_dirty():
-      edits = diff.diff_view_with_disk(self.v)
-      self.rpc.patch_source(self.v.file_name(), edits)
-    completions = self.rpc.completions(self.v.file_name(), locations[0], 0, False, False)
+      source_file_info = SourceFileInfo(self.v.file_name(), self.v.substr(Region(0, self.v.size())))
+#      edits = diff.diff_view_with_disk(self.v)
+#      self.rpc.patch_source(self.v.file_name(), edits)
+    else:
+      source_file_info = SourceFileInfo(self.v.file_name())
+
+    completions = self.rpc.completions(source_file_info, locations[0], 100, False, False)
     if not completions:
       self.env.completion_ignore_prefix = prefix
     return self._completion_response(completions)
