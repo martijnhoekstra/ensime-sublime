@@ -328,11 +328,9 @@ def async_rpc(*args):
       else: on_complete = None
       req = _mk_req(func, *args, **kwargs)
       def callback(payload):
-#        log_client("Async_rpc.callback: " + str(payload))
         data = parser(payload)
         if (on_complete): 
           on_complete(data)
-#      log_client("registering callback " + str(callback))
       self.env.controller.client.async_req(req, callback, call_back_into_ui_thread = True)
     return wrapped
   return wrapper
@@ -353,8 +351,8 @@ class Rpc(object):
   def __init__(self, env):
     self.env = env
 
-  @async_rpc()
-  def init_project(self): pass
+#  @async_rpc()
+#  def init_project(self): pass
 
   @sync_rpc()
   def shutdown_server(self): pass

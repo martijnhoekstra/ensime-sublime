@@ -869,7 +869,7 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
     self.status_message("Initializing Ensime server... ")
     def init_project(subproject_name):
       conf = self.env.project_config + [key(":active-subproject"), subproject_name]
-      self.rpc.init_project()
+#      self.rpc.init_project()
     dotensime.select_subproject(self.env.project_config, self.owner, init_project)
 
   def shutdown(self):
