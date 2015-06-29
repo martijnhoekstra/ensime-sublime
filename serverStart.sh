@@ -104,7 +104,7 @@ EOF
 echo "Changing to $RESOLUTION_DIR"
 cd "$RESOLUTION_DIR"
 echo "Running sbt saveClasspath"
-sbt saveClasspath > "$CLASSPATH_LOG"
+sbt update saveClasspath > "$CLASSPATH_LOG"
 
 CLASSPATH="$JDK_HOME/lib/tools.jar:`cat $CLASSPATH_FILE`"
 

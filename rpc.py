@@ -18,11 +18,12 @@ class ActiveRecord(object):
 
   @classmethod
   def parse(cls, raw):
+    "Parse a data type from a raw data structure"
     if not raw: return None
-    m = sexp.sexp_to_key_map(raw)
+    value_map = sexp.sexp_to_key_map(raw)
     self = cls()
     populate = getattr(self, "populate")
-    populate(m)
+    populate(value_map)
     return self
 
   def unparse(self):
@@ -44,9 +45,9 @@ class Note(ActiveRecord):
 class CompletionInfoList(ActiveRecord):
   def populate(self, m):
     self.prefix = m[":prefix"]
-    self.completions = Completion.parse_list(m[":completions"])
+    self.completions = CompletionInfo.parse_list(m[":completions"])
 
-class Completion(ActiveRecord):
+class CompletionInfo(ActiveRecord):
   def populate(self, m):
     self.name = m[":name"]
     self.signature = m[":type-sig"]
@@ -54,36 +55,37 @@ class Completion(ActiveRecord):
     self.type_id = m[":type-id"]
     self.to_insert = m[":to-insert"] if ":to-insert" in m else None
 
-class Position(ActiveRecord):
+class SourcePosition(ActiveRecord):
   def populate(self, m):
     self.file_name = m[":file"] if ":file" in m else None
     self.offset = m[":offset"] if ":offset" in m else None
     self.start = m[":start"] if ":start" in m else None
     self.end = m[":end"] if ":end" in m else None
 
-class Symbol(ActiveRecord):
+class SymbolInfo(ActiveRecord):
   def populate(self, m):
     self.name = m[":name"]
-    self.type = Type.parse(m[":type"])
-    self.decl_pos = Position.parse(m[":decl-pos"]) if ":decl-pos" in m else None
+    self.type = TypeInfo.parse(m[":type"])
+    self.decl_pos = SourcePosition.parse(m[":decl-pos"]) if ":decl-pos" in m else None
     self.is_callable = bool(m[":is-callable"]) if ":is-callable" in m else False
     self.owner_type_id = m[":owner-type-id"] if ":owner-type-id" in m else None
 
-class Type(ActiveRecord):
+class TypeInfo(ActiveRecord):
   def populate(self, m):
     self.name = m[":name"]
     self.type_id = m[":type-id"]
     isArrowType = bool(m[":arrow-type"]) if ":arrow-type" in m else False
     if isArrowType:
       self.arrow_type = True
-      self.result_type = Type.parse(m[":result-type"])
-      self.param_sections = Params.parse_list(m[":param-sections"]) if ":param-sections" in m else []
-    else:
+      self.result_type = TypeInfo.parse(m[":result-type"])
+      self.param_sections = ParamSectionInfo.parse_list(m[":param-sections"]) if ":param-sections" in m else []
+    else: 
+      # Basic type
       self.arrow_type = False
       self.full_name = m[":full-name"] if ":full-name" in m else None
       self.decl_as = m[":decl-as"] if ":decl-as" in m else None
-      self.decl_pos = Position.parse(m[":pos"]) if ":pos" in m else None
-      self.type_args = Type.parse_list(m[":type-args"]) if ":type-args" in m else []
+      self.decl_pos = SourcePosition.parse(m[":pos"]) if ":pos" in m else None
+      self.type_args = TypeInfo.parse_list(m[":type-args"]) if ":type-args" in m else []
       self.outer_type_id = m[":outer-type-id"] if ":outer-type-id" in m else None
       self.members = Member.parse_list(m[":members"]) if ":members" in m else []
 
@@ -106,7 +108,7 @@ class SymbolSearchResult(ActiveRecord):
     self.name = m[":name"]
     self.local_name = m[":local-name"]
     self.decl_as = m[":decl-as"] if ":decl-as" in m else None
-    self.pos = Position.parse(m[":pos"]) if ":pos" in m else None
+    self.pos = SourcePosition.parse(m[":pos"]) if ":pos" in m else None
 
 class RefactorResult(ActiveRecord):
   def populate(self, m):
@@ -116,7 +118,7 @@ class Member(ActiveRecord):
   def populate(self, m):
     pass
 
-class Params(ActiveRecord):
+class ParamSectionInfo(ActiveRecord):
   def populate(self, m):
     self.is_implicit = bool(m[":is-implicit"]) if ":is-implicit" in m else False
     self.params = Param.parse_list(m[":params"]) if ":params" in m else []
@@ -354,6 +356,7 @@ class Rpc(object):
 #  @async_rpc()
 #  def init_project(self): pass
 
+  
   @sync_rpc()
   def shutdown_server(self): pass
 
@@ -366,10 +369,10 @@ class Rpc(object):
   @sync_rpc(CompletionInfoList.parse)
   def completions(self, file_name, position, max_results, case_sensitive, reload_from_disk): pass
 
-  @async_rpc(Type.parse)
+  @async_rpc(TypeInfo.parse)
   def type_at_point(self, file_name, position): pass
 
-  @async_rpc(Symbol.parse)
+  @async_rpc(SymbolInfo.parse)
   def symbol_at_point(self, file_name, position): pass
 
   @async_rpc(SymbolSearchResults.parse_list)

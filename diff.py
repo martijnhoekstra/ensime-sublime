@@ -15,7 +15,7 @@ def diff(old_s, new_s):
   Note: We optimize for the (hypothetically)common case where edits will
   be localized to one small area of a large file.
   """
-  limit = min(len(old_s),len(new_s))
+  limit = min(len(old_s), len(new_s))
 
   # Find first index (counting from the start) where the
   # strings differ.

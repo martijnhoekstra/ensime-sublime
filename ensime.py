@@ -1,7 +1,7 @@
 import sublime
 from sublime import *
 from sublime_plugin import *
-import os, threading, thread, socket, getpass, signal, glob
+import os, threading, thread, socket, getpass, signal, glob, errno
 import subprocess, tempfile, datetime, time, json, zipfile
 import functools, inspect, traceback, random, re, sys
 from functools import partial as bind
@@ -9,6 +9,8 @@ from string import strip
 from types import *
 import env, diff, dotensime, dotsession, rpc
 import sexp
+
+from os import path
 from sexp import key, sym
 from constants import *
 from paths import *
@@ -64,7 +66,7 @@ class EnsimeCommon(object):
 
   def log_on_ui_thread(self, flavor, data):
     if flavor in self.env.settings.get("log_to_console", {}):
-      print data.strip()
+      print(data.strip())
     if flavor in self.env.settings.get("log_to_file", {}):
       try:
         if not os.path.exists(self.env.log_root):
@@ -74,7 +76,7 @@ class EnsimeCommon(object):
       except:
         exc_type, exc_value, exc_tb = sys.exc_info()
         detailed_info = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
-        print detailed_info
+        print(detailed_info)
 
   def prepare_log_message(self, data):
     buffer = "["+str(datetime.datetime.now())+"]: "
@@ -746,73 +748,14 @@ class Server(ServerListener, EnsimeCommon):
 
   def startup(self):
     ensime_command = self.get_ensime_command()
-    if self.get_ensime_command() and self.verify_ensime_version():
+    if self.get_ensime_command():
       self.log_server("Starting Ensime server (plugin version is " + (self.env.settings.get("plugin_version") or "unknown") + ")")
       self.log_server("Launching Ensime server process with command = " + str(ensime_command) + " and args = " + str(self.env.ensime_args))
-      self.proc = ServerProcess(self.owner, ensime_command, [self, self.env.controller])
+      self.proc = ServerProcess(self.owner, "java -jar ....", [self, self.env.controller])
       return True
 
   def get_ensime_command(self):
-    if not os.path.exists(self.env.ensime_executable):
-      message = "Ensime server executable \"" + self.env.ensime_executable + "\" does not exist."
-      message += "\n\n"
-      message += "If you haven't yet installed Ensime server, download it from http://download.sublimescala.org, "
-      message += "and unpack it into the \"server\" subfolder of the SublimeEnsime plugin home, which is usually located at " + sublime.packages_path() + os.sep + "Ensime. "
-      message += "Your installation is correct if inside the \"server\" subfolder there are folders named \"bin\" and \"lib\"."
-      message += "\n\n"
-      message += "If you have already installed Ensime server, check your Ensime.sublime-settings (accessible via Preferences > Package Settings > Ensime) "
-      message += "and make sure that the \"ensime_server_path\" entry points to a valid location relative to " + sublime.packages_path() + " "
-      message += "(currently it points to the path shown above)."
-      self.error_message(message)
-      return
-    return [self.env.ensime_executable, self.port_file]
-
-  def verify_ensime_version(self):
-    self.log_server("Verifying Ensime server version")
-    ensime_jar_dir = self.env.server_path + os.sep + "lib"
-    ensime_jars = filter(os.path.isfile, glob.glob(ensime_jar_dir + os.sep + "ensime*.jar"))
-    if len(ensime_jars) != 1:
-      self.log_server("Error: no ensime*.jar files found in " + ensime_jar_dir)
-      self.log_server("Warning: skipping the version check, proceeding with starting up the server")
-      return True
-    ensime_jar = None
-    try:
-      ensime_jar = zipfile.ZipFile(ensime_jars[0], "r")
-      manifest = ensime_jar.open("META-INF/MANIFEST.MF", "r").readlines()
-      def parse_line(line):
-        try:
-          m = re.match(r"^(.*?):(.*)$", line)
-          return (m.group(1).strip(), m.group(2).strip())
-        except:
-          self.log_server("Problems parsing line: " + line)
-      manifest = dict(parse_line(line) for line in manifest if line.strip())
-      def parse_version(s):
-        try:
-          m = re.match(r"^(\d+)\.(\d+)(?:.(\d+)(?:.(\d+))?)?$", s)
-          return map(lambda s: int(s), filter(lambda s: s, m.groups()))
-        except:
-          self.log_server("Problems parsing version: " + s)
-      aversion = parse_version(manifest["Implementation-Version"])
-      rversion = parse_version(self.env.settings.get("min_ensime_server_version"))
-      self.log_server("Required version: " + str(rversion) + ", actual version: " + str(aversion))
-      if aversion < rversion:
-        message = "Ensime server version is " + manifest["Implementation-Version"] + ", "
-        message += "required version is at least " + str(self.env.settings.get("min_ensime_server_version")) + "."
-        message += "\n\n"
-        message += "To update your Ensime server, download a suitable version from http://download.sublimescala.org, "
-        message += "and unpack it into the \"server\" subfolder of the SublimeEnsime plugin home, which is usually located at " + sublime.packages_path() + os.sep + "Ensime. "
-        message += "Your installation is correct if inside the \"server\" subfolder there are folders named \"bin\" and \"lib\"."
-        self.error_message(message)
-        return
-      return True
-    except:
-      exc_type, exc_value, exc_tb = sys.exc_info()
-      detailed_info = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
-      self.log_server("Error verifying Ensime server version:" + detailed_info)
-      self.log_server("Warning: skipping the version check, proceeding with starting up the server")
-      return True
-    finally:
-      if ensime_jar: ensime_jar.close()
+    return ["", self.port_file]
 
   def on_server_data(self, data):
     str_data = str(data).replace("\r\n", "\n").replace("\r", "\n")
@@ -828,11 +771,24 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
     self.client = None
     self.server = None
 
+ 
+  def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc: # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else: raise
+
   def startup(self):
+    config_map = sexp.sexp_to_key_map(self.env.project_config)
+    cache_dir = config_map.get(":cache-dir")
+    port_file = path.join(cache_dir, "port")
+    print str()
     try:
       if not self.env.running:
         if self.env.settings.get("connect_to_external_server", False):
-          self.port_file = self.env.settings.get("external_server_port_file")
+          self.port_file = port_file
           if not self.port_file:
             message = "\"connect_to_external_server\" in your Ensime.sublime-settings is set to true, "
             message += "however \"external_server_port_file\" is not specified. "
@@ -849,7 +805,6 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
           self.env.running = True
           sublime.set_timeout(self.ignition, 0)
         else:
-          _, port_file = tempfile.mkstemp("_ensime_port")
           self.port_file = port_file
           self.server = Server(self.owner, port_file)
           self.server.startup() # delay handshake until the port number has been written

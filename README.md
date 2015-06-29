@@ -7,6 +7,10 @@ It has recently moved to the Ensime project and is in the process of being re-en
 ## Project status
 
 ```
+29.06.2015: It lives a little more
+
+More stabilisation - slightly simpler startup instructions (it works out the .ensime port file for itself).  Lots more to do...
+
 19.06.2015: It lives 
 
 We now have a version that starts and works (at least for some bits) - you need to follow the 'getting it going' steps below carefully, all other startup options will fail right now.
@@ -47,8 +51,6 @@ Later the plugin will be deployed using Package Control, but thats on the todo l
 
 ```
   "connect_to_external_server": true,
-  "error_highlight": true,
-  "external_server_port_file": "$PROJECT/.ensime_cache/port",
 ```
 
 ### Start server and link in Sublime

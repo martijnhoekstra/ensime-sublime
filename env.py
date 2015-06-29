@@ -71,7 +71,7 @@ class EnsimeEnvironment(object):
     self.ensime_executable = (self.server_path + os.sep +
                               ("bin\\server.bat" if os.name == 'nt'
                                else "bin/server"))
-    self.ensime_args = self.settings.get("ensime_server_args")
+    self.ensime_args = "" # TODO Should be loaded from .ensime file
     self.plugin_root = os.path.normpath(os.path.join(self.server_path, ".."))
     self.log_root = os.path.normpath(os.path.join(self.plugin_root, "logs"))
 
