@@ -2,18 +2,27 @@
 
 [![Join the chat at https://gitter.im/ensime/ensime-sublime](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/ensime/ensime-sublime?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-This project provides integration with ENSIME and Sublime Text Editor 2.
+This project provides integration with ENSIME and Sublime Text Editor. (Supports both Sublime Text 2 and 3)
 It has recently moved to the Ensime project and is in the process of being re-enlivened - so watch this space.
 ## Project status
 
 ```
+
+06.07.2015: Better completions and ST 3 Support
+
+More work to make completions work better. We also support now support ST 3, see updated instructions.
+Now to make it deployed with Package Control...
+
+
 29.06.2015: It lives a little more
 
-More stabilisation - slightly simpler startup instructions (it works out the .ensime port file for itself).  Lots more to do...
+More stabilisation - slightly simpler startup instructions (it works out the .ensime port file for itself).  
+Lots more to do...
 
 19.06.2015: It lives 
 
-We now have a version that starts and works (at least for some bits) - you need to follow the 'getting it going' steps below carefully, all other startup options will fail right now.
+We now have a version that starts and works (at least for some bits) - you need to follow the 'getting it going' 
+steps below carefully, all other startup options will fail right now.
 
 Have fun, come and join the party and hack on Ensime-Sublime
 
@@ -25,19 +34,23 @@ it up to date and into a workable state as soon as possible - watch this space!
 
 ```
 
-This is a beta version.  It has been hacked to get it working against an up to date Ensime, but many things are likely to be broken.  Jump to source and error hightlight have been seen to work at least once ;)
+This is a beta version.  It has been hacked to get it working against an up to date Ensime, but many things are 
+likely to be broken.  Jump to source and error hightlight have been seen to work at least once ;)
 Please submit issues to our tracker: https://github.com/ensime/ensime-sublime/issues/new
 
 ## Getting it going
-As mentioned above we are in the process of bringing this project back to life - it works (well we think it does) but you have to jump through a bunch of hoops to get it working.
+As mentioned above we are in the process of bringing this project back to life - it works (well we think it does) 
+but you have to jump through a bunch of hoops to get it working.
 
 ### Setup plugin
 1. Install Sublime Text 2 (work need ) 
-2. Clone this project (lets return to this as $PLUGIN) 
-3. Symlink ```~/Library/Application Support/Sublime Text 2/Packages/Ensime``` (Mac) or ```/.config/sublime-text-2/Packages/Ensime``` (linux) to $PLUGIN
+2. Clone this project (lets return to this as $PLUGIN)- Use ST3 branch for Sublime Text 3 
+3. ST2
+    1. *ST2* - Symlink ```~/Library/Application Support/Sublime Text 2/Packages/Ensime``` (Mac) or ```/.config/sublime-text-2/Packages/Ensime``` (linux) to $PLUGIN
+    2. *ST3* - Symlink ```~/Library/Application Support/Sublime Text 3/Packages/Ensime``` (Mac) or ```/.config/sublime-text-3/Packages/Ensime``` (linux) to $PLUGIN
 4. Restart Sublime
 
-Later the plugin will be deployed using Package Control, but thats on the todo list.
+Later the plugin will be deployed using Package Control, but that is on the todo list.
 
 ### Prepare project
 1. Checkout your project into $PROJECT
