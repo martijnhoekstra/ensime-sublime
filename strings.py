@@ -2,7 +2,7 @@ def encode_if_unicode(arg):
     if isinstance(arg, list):
         return [encode_if_unicode(elem) for elem in arg]
     else:
-        return arg.encode("utf-8") if isinstance(arg, unicode) else arg
+        return arg.encode("utf-8")  # if isinstance(arg, unicode) else arg
 
 
 def decode_if_str(arg):

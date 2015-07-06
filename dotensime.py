@@ -1,11 +1,10 @@
 from __future__ import unicode_literals
 import sublime, os, traceback, functools, sys
 from functools import partial as bind
-import sexp
-from sexp import key, sym
-from paths import *
-from sbt import *
-from strings import *
+from . import sexp
+from .sexp import key, sym
+from .paths import *
+from .sbt import *
 
 
 def locations(window):

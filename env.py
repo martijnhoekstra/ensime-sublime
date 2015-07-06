@@ -1,8 +1,9 @@
 import sublime
-import threading, uuid
+import threading, uuid, os
 from uuid import uuid4
-import dotensime, dotsession
-from paths import *
+
+from . import paths, dotensime, dotsession
+from .paths import *
 
 envLock = threading.RLock()
 ensime_envs = {}
@@ -32,7 +33,7 @@ class EnsimeEnvironment(object):
 
     def __deferred_init__(self):
         self.recalc()
-        from ensime import Daemon
+        from .ensime import Daemon
 
         v = self.w.active_view()
         if v is not None:
@@ -110,14 +111,13 @@ class EnsimeEnvironment(object):
                     self.per_file_cache[file_name].append(datum)
 
             def filter(self, pred):
-                dropouts = set(
-                    map(lambda n: self.normalized_cache[n.file_name], filter(lambda n: not pred(n), self.data)))
+                dropouts = set([self.normalized_cache[n.file_name] for n in [n for n in self.data if not pred(n)]])
                 # doesn't take into account pathological cases when a "*.scala" file
                 # is actually a symlink to something without a ".scala" extension
                 for file_name in self.per_file_cache.keys():
                     if file_name in dropouts:
                         del self.per_file_cache[file_name]
-                self.data = filter(pred, self.data)
+                self.data = list(filter(pred, self.data))
 
             def clear(self):
                 self.filter(lambda f: False)
@@ -164,37 +164,37 @@ class EnsimeEnvironment(object):
 
     @property
     def rpc(self):
-        from rpc import Rpc
+        from .rpc import Rpc
 
         return Rpc(self)
 
     @property
     def notes(self):
-        from ensime import Notes
+        from .ensime import Notes
 
         return Notes(self)
 
     @property
     def debugger(self):
-        from ensime import Debugger
+        from .ensime import Debugger
 
         return Debugger(self)
 
     @property
     def output(self):
-        from ensime import Output
+        from .ensime import Output
 
         return Output(self)
 
     @property
     def stack(self):
-        from ensime import Stack
+        from .ensime import Stack
 
         return Stack(self)
 
     @property
     def watches(self):
-        from ensime import Watches
+        from .ensime import Watches
 
         return Watches(self)
 

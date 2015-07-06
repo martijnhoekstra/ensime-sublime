@@ -2,20 +2,20 @@ from __future__ import unicode_literals
 import sublime
 from sublime import *
 from sublime_plugin import *
-import os, threading, thread, socket, getpass, signal, glob, errno
+import os, threading, socket, getpass, signal, glob, errno
 import subprocess, tempfile, datetime, time, json, zipfile
 import functools, inspect, traceback, random, re, sys
 from functools import partial as bind
-from string import strip
-from types import *
-import env, dotensime, dotsession, rpc, sexp
 from os import path
-from paths import *
-from sexp import key, sym
-from constants import *
-from rpc import *
-from sbt import *
-from strings import *
+from .paths import *
+from types import *
+
+from . import env, dotensime, dotsession, rpc, sexp
+from .sexp import key, sym
+from .constants import *
+from .rpc import *
+from .sbt import *
+from .strings import *
 
 
 class EnsimeCommon(object):
@@ -81,10 +81,10 @@ class EnsimeCommon(object):
 
     def prepare_log_message(self, data):
         stripped_data = data.strip()
-        buffer = "[" + unicode(datetime.datetime.now()) + "]: "
+        buffer = "[" + str(datetime.datetime.now()) + "]: "
         buffer += stripped_data
         buffer += "\n"
-        return buffer.encode('utf-8')
+        return buffer
 
     def is_valid(self):
         return bool(self.env and self.env.valid)
@@ -187,7 +187,7 @@ class EnsimeEventListenerProxy(EventListener):
         def is_ensime_event_listener(member):
             return inspect.isclass(member) and member != EnsimeEventListener and issubclass(member, EnsimeEventListener)
 
-        self.listeners = map(lambda info: info[1], inspect.getmembers(sys.modules[__name__], is_ensime_event_listener))
+        self.listeners = list(map(lambda info: info[1], inspect.getmembers(sys.modules[__name__], is_ensime_event_listener)))
 
     def _invoke(self, view, handler_name, *args):
         for listener in self.listeners:
@@ -196,7 +196,8 @@ class EnsimeEventListenerProxy(EventListener):
                 handler = getattr(instance, handler_name)
             except:
                 handler = None
-            if handler: return handler(*args)
+            if handler:
+                return handler(*args)
 
     def on_new(self, view):
         return self._invoke(view, "on_new")
@@ -365,7 +366,7 @@ class EnsimeToolView(EnsimeCommon):
     @property
     def v(self):
         wannabes = filter(lambda v: v.name() == self.name, self.w.views())
-        return wannabes[0] if wannabes else None
+        return next(wannabes, None) # OLD: wannabes[0] if wannabes else None
 
     def _mk_v(self):
         v = self.w.new_file()
@@ -437,7 +438,6 @@ class ClientSocket(EnsimeCommon):
                             buf += chunk
                         else:
                             raise Exception("fatal error: recv returned None")
-                    self.log_client(u"RECV: " + buf.decode('utf-8'))
 
                     try:
                         s = buf.decode('utf-8')
@@ -506,7 +506,8 @@ class Client(ClientListener, EnsimeCommon):
         with open(port_file) as f: self.port = int(f.read())
         self.timeout = timeout
         self.init_counters()
-        methods = filter(lambda m: m[0].startswith("message_"), inspect.getmembers(self, predicate=inspect.ismethod))
+        methods_itr = filter(lambda m: m[0].startswith("message_"), inspect.getmembers(self, predicate=inspect.ismethod))
+        methods = list(methods_itr)
         self.log_client("reflectively found " + str(len(methods)) + " message handlers: " + str(methods))
         self.handlers = dict((":" + m[0][len("message_"):].replace("_", "-"), (m[1], None, None)) for m in methods)
 
@@ -537,7 +538,7 @@ class Client(ClientListener, EnsimeCommon):
 
         self.feedback(msg_str)
         self.log_client("async_req: " + str(msg_id) + "  " + msg_str)
-        self.socket.send(encode_if_unicode(msg_str))
+        self.socket.send(msg_str.encode('utf-8'))
 
     def sync_req(self, to_send, timeout=0):
         msg_id = self.next_message_id()
@@ -548,7 +549,7 @@ class Client(ClientListener, EnsimeCommon):
 
         self.feedback(msg_str)
         self.log_client("SEND SYNC REQ: " + msg_str)
-        self.socket.send(msg_str)
+        self.socket.send(msg_str.encode('utf-8'))
 
         max_wait = timeout or self.timeout
         event.wait(max_wait)
@@ -575,15 +576,12 @@ class Client(ClientListener, EnsimeCommon):
         msg_type = str(data[0])
         handler = self.handlers.get(msg_type)
         if handler:
-            self.log_client("handleMessage: got handler" + str(handler))
             handler, _, _ = handler
             msg_id = data[-1] if msg_type == ":return" else None
             data = data[1:-1] if msg_type == ":return" else data[1:]
             payload = None
             if len(data) == 1: payload = data[0]
             if len(data) > 1: payload = data
-            self.log_client("handleMessage: got handler2")
-            self.log_client("XXX Got msg_id " + str(msg_id) + "  payload " + str(payload))
             return handler(msg_id, payload)
         else:
             self.log_client("handle_message: unexpected message type: " + msg_type)
@@ -848,7 +846,6 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
         config_map = sexp.sexp_to_key_map(self.env.project_config)
         cache_dir = config_map.get(":cache-dir")
         port_file = path.join(cache_dir, "port")
-        print(str())
         try:
             if not self.env.running:
                 if self.env.settings.get("connect_to_external_server", False):
@@ -955,9 +952,7 @@ class Daemon(EnsimeEventListener):
         # print "on_modified"
         rs = self.v.get_regions(ENSIME_BREAKPOINT_REGION)
         if rs:
-            irrelevant_breakpoints = filter(
-                lambda b: not same_paths(b.file_name, self.v.file_name()),
-                self.env.breakpoints)
+            irrelevant_breakpoints = [b for b in self.env.breakpoints if not same_paths(b.file_name, self.v.file_name())]
 
             def new_breakpoint_position(r):
                 lines = self.v.lines(r)
@@ -965,7 +960,7 @@ class Daemon(EnsimeEventListener):
                     (linum, _) = self.v.rowcol(lines[0].begin())
                     return dotsession.Breakpoint(self.v.file_name(), linum + 1)
 
-            relevant_breakpoints = filter(lambda b: b, map(new_breakpoint_position, rs))
+            relevant_breakpoints = [b for b in map(new_breakpoint_position, rs) if b]
             self.env.breakpoints = irrelevant_breakpoints + relevant_breakpoints
             self.env.save_session()
             self.redraw_breakpoints()

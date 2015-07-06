@@ -27,7 +27,7 @@ def sexp_to_key_map(sexp):
     try:
         key_type = type(key(":key"))
         result = {}
-        for i in xrange(0, len(sexp), 2):
+        for i in range(0, len(sexp), 2):
             k, val = sexp[i], sexp[i + 1]
             if type(k) == key_type:
                 result[str(k)] = val
@@ -228,7 +228,7 @@ def atom_to_str(exp):
         return "nil"
     elif type(exp) == Symbol:
         return exp.val
-    elif isinstance(exp, basestring):
+    elif isinstance(exp, str):
         return "\"" + exp.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
     else:
         return str(exp)
