@@ -16,7 +16,7 @@ Now to make it deployed with Package Control...
 
 29.06.2015: It lives a little more
 
-More stabilisation - slightly simpler startup instructions (it works out the .ensime port file for itself).  
+More stabilisation - slightly simpler startup instructions (it works out the .ensime port file for itself).
 Lots more to do...
 
 19.06.2015: It lives 
@@ -54,21 +54,29 @@ Later the plugin will be deployed using Package Control, but that is on the todo
 
 ### Prepare project
 1. Checkout your project into $PROJECT
-1. Add the Ensime sbt plugin to the project or to your user sbt configuration (see https://github.com/ensime/ensime-server/wiki/Quick-Start-Guide) for details of installing the plugin - ignore the Emacs bits.
-2. run ```sbt gen-ensime``` to create a ```.ensime``` file
+3. Add the Ensime sbt plugin to the project or to your user sbt configuration (see https://github.com/ensime/ensime-server/wiki/Quick-Start-Guide) for details of installing the plugin - ignore the Emacs bits.
+3. run ```sbt gen-ensime``` to create a ```.ensime``` file
 
 ### Configure Ensime-Sublime plugin
 
-1. ``` Preference -> Package Settings -> Ensime -> Settings User ->
-2. Add the below entires to the file (replacing $PROJECT with the path)
-
+1. Open Ensime plugin's configuration at  `Preference -> Package Settings -> Ensime -> Settings -> User`.
+2. Add the below entires to the file (by replacing $PROJECT with the path)
 ```
-  "connect_to_external_server": true,
+{
+	"connect_to_external_server": true,
+}
 ```
 
 ### Start server and link in Sublime
-1. Run $PLUGIN/serverStart.sh $PROJECt/.ensime (works with linux and mac) - starts an ensime instance for your project
-2. In Sublime  - create a new window and within it do ```Project -> New Project``` and select $PROJECT as the root.
+1. Run the following command at the terminal (it works with both linux and mac). It starts an ensime instance for your project. 
+
+```
+$ $PLUGIN/serverStart.sh $PROJECT/.ensime
+```
+
+Note that, before starting server, please install `grealpath` utility (e.g., `brew install coreutils`) if it does not exist in your meachine. 
+
+2. In Sublime, create a new window and within it do ```Project -> New Project``` and select $PROJECT as the root.
 3. Open the Sublime command palette (typically bound to `Ctrl+Shift+P` on Windows/Linux and `Cmd+Shift+P` on Mac) and type `Ensime: Startup`.
 
 With luck - if you open a scala file in your project, you should hav error highlighting (on save) and jump to definition working!
