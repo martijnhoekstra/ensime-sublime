@@ -114,7 +114,7 @@ class EnsimeEnvironment(object):
                 dropouts = set([self.normalized_cache[n.file_name] for n in [n for n in self.data if not pred(n)]])
                 # doesn't take into account pathological cases when a "*.scala" file
                 # is actually a symlink to something without a ".scala" extension
-                for file_name in self.per_file_cache.keys():
+                for file_name in list(self.per_file_cache):
                     if file_name in dropouts:
                         del self.per_file_cache[file_name]
                 self.data = list(filter(pred, self.data))
