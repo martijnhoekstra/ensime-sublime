@@ -1416,10 +1416,14 @@ class EnsimeGoToDefinition(RunningProjectFileOnly, EnsimeTextCommand):
                         return "\r"
                     return None
 
-                zb_offset = info.decl_pos.offset
-                newline = detect_newline()
-                zb_row = contents.count(newline, 0, zb_offset) if newline else 0
-                zb_col = zb_offset - contents.rfind(newline, 0, zb_offset) - len(newline) if newline else zb_offset
+                if info.decl_pos.is_offset:
+                    zb_offset = info.decl_pos.offset
+                    newline = detect_newline()
+                    zb_row = contents.count(newline, 0, zb_offset) if newline else 0
+                    zb_col = zb_offset - contents.rfind(newline, 0, zb_offset) - len(newline) if newline else zb_offset
+                else:
+                    zb_row = info.decl_pos.line
+                    zb_col = 0
 
                 def open_file():
                     return self.w.open_file("%s:%d:%d" % (file_name, zb_row + 1, zb_col + 1), sublime.ENCODED_POSITION)
