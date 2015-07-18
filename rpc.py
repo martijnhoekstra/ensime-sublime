@@ -1,15 +1,19 @@
 from __future__ import unicode_literals
-import inspect, functools
+import inspect
+import functools
 from functools import partial as bind
 from . import sexp
 from .sexp import key, sym
+import collections
 
 # ############################# DATA STRUCTURES ##############################
+
 
 class ActiveRecord(object):
     @classmethod
     def parse_list(cls, raw):
-        if not raw: return []
+        if not raw:
+            return []
         if type(raw[0]) == type(key(":key")):
             m = sexp.sexp_to_key_map(raw)
             field = ":" + cls.__name__.lower() + "s"
@@ -20,7 +24,8 @@ class ActiveRecord(object):
     @classmethod
     def parse(cls, raw):
         """Parse a data type from a raw data structure"""
-        if not raw: return None
+        if not raw:
+            return None
         value_map = sexp.sexp_to_key_map(raw)
         self = cls()
         populate = getattr(self, "populate")
@@ -76,7 +81,7 @@ class CompletionSignature(ActiveRecord):
         sections_raw = data[0] if(data[0] is not False) else []
         sections = []
         for s in sections_raw:
-            if s == False:
+            if not s:
                 sections.append([])
             else:
                 sections.append(s)
@@ -102,10 +107,17 @@ class CompletionInfo(ActiveRecord):
 
 class SourcePosition(ActiveRecord):
     def populate(self, m):
+        # [:type, line, :file,
+        # '/workspace/ensime-test-project/.ensime_cache/dep-src/source-jars/java/io/PrintStream.java', :line, 697]
+        # [:type, offset, :file, '/workspace/ensime-test-project/src/main/scala/Foo.scala', :offset, 150]
+        self.type_str = str(m[":type"])
         self.file_name = m[":file"] if ":file" in m else None
+        self.line = m[":line"] if ":line" in m else None
         self.offset = m[":offset"] if ":offset" in m else None
-        self.start = m[":start"] if ":start" in m else None
-        self.end = m[":end"] if ":end" in m else None
+
+        self.is_line = self.type_str == "line"
+        self.is_offset = self.type_str == "offset"
+        self.is_empty = self.type_str == "empty"
 
 
 class SymbolInfo(ActiveRecord):
@@ -143,7 +155,8 @@ class SymbolSearchResults(ActiveRecord):
     # and calls sexp_to_key_map
     @classmethod
     def parse(cls, raw):
-        if not raw: return None
+        if not raw:
+            return None
         self = cls()
         self.populate(raw)
         return self
@@ -217,7 +230,7 @@ class DebugEvent(ActiveRecord):
 
 
 class DebugKickoffResult(ActiveRecord):
-    def __nonzero__(self):
+    def __bool__(self):
         return not self.error
 
     def populate(self, m):
@@ -258,6 +271,7 @@ class SourceFileInfo(ActiveRecord):
         if self.contents_in is not None:
             base.extend([key(":contents-in"), self.contents_in])
         return [base]
+
 
 class DebugStackFrame(ActiveRecord):
     def populate(self, m):
@@ -368,18 +382,22 @@ class DebugLocationSlot(DebugLocation):
 # ############################# REMOTE PROCEDURES ##############################
 
 def _mk_req(func, *args, **kwargs):
-    if kwargs: raise Exception("kwargs are not supported by the RPC proxy")
+    if kwargs:
+        raise Exception("kwargs are not supported by the RPC proxy")
     req = []
 
     def translate_name(name):
-        if name.startswith("_"): name = name[1:]
+        if name.startswith("_"):
+            name = name[1:]
         name = name.replace("_", "-")
         return name
 
     req.append(sym("swank:" + translate_name(func.__name__)))
     (spec_args, spec_varargs, spec_keywords, spec_defaults) = inspect.getargspec(func)
-    if spec_varargs: raise Exception("varargs in signature of " + str(func))
-    if spec_keywords: raise Exception("keywords in signature of " + str(func))
+    if spec_varargs:
+        raise Exception("varargs in signature of " + str(func))
+    if spec_keywords:
+        raise Exception("keywords in signature of " + str(func))
     if len(spec_args) != len(args):
         if len(args) < len(spec_args) and len(args) + len(spec_defaults) >= len(spec_args):
             # everything is fine. we can use default values for parameters to provide arguments to the call
@@ -387,8 +405,7 @@ def _mk_req(func, *args, **kwargs):
         else:
             preamble = "argc mismatch in signature of " + str(func) + ": "
             expected = "expected " + str(len(spec_args)) + " args " + str(spec_args) + ", "
-            actual = "actual " + str(len(args)) + " args " + str(args) + " with types " + str(
-                map(lambda a: type(a), args))
+            actual = "actual " + str(len(args)) + " args " + str(args) + " with types " + str([type(a) for a in args])
             raise Exception(preamble + expected + actual)
     for arg in args[1:]:  # strip off self
         if hasattr(arg, "unparse"):
@@ -405,7 +422,7 @@ def async_rpc(*args):
     def wrapper(func):
         def wrapped(*args, **kwargs):
             self = args[0]
-            if callable(args[-1]):
+            if isinstance(args[-1], collections.Callable):
                 on_complete = args[-1]
                 args = args[:-1]
             else:
@@ -414,7 +431,7 @@ def async_rpc(*args):
 
             def callback(payload):
                 data = parser(payload)
-                if (on_complete):
+                if on_complete:
                     on_complete(data)
 
             self.env.controller.client.async_req(req, callback, call_back_into_ui_thread=True)

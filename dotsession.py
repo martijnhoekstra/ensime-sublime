@@ -1,4 +1,9 @@
-import sublime, os, sys, traceback, json, re
+import sublime
+import os
+import sys
+import traceback
+import json
+import re
 
 from .paths import *
 
@@ -20,7 +25,7 @@ class Breakpoint(object):
         return self.file_name != "" or self.line != 0
 
     def is_valid(self):
-        return not not self.file_name and self.line != None
+        return not not self.file_name and self.line is not None
 
 
 class Launch(object):
@@ -92,7 +97,8 @@ def load(env):
             launches_list = [Launch(c.get("name"), c.get("main_class"), c.get("args"), c.get("remote_address")) for c in session.get("launch_configs", [])]
             launches = {}
             # todo. this might lose user data
-            for c in launches_list: launches[c.name] = c
+            for c in launches_list:
+                launches[c.name] = c
             launch_key = session.get("current_launch_config") or ""
             return Session(env, breakpoints, launches, launch_key)
         except:

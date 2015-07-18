@@ -9,6 +9,7 @@ from functools import partial as bind
 from os import path
 from .paths import *
 from types import *
+import collections
 
 from . import env, dotensime, dotsession, rpc, sexp
 from .sexp import key, sym
@@ -108,13 +109,15 @@ class EnsimeCommon(object):
 
     def project_relative_path(self, wannabe):
         filename = self._filename_from_wannabe(wannabe)
-        if not self.in_project(filename): return None
+        if not self.in_project(filename):
+            return None
         return relative_path(self.env.project_root, filename)
 
     def _invoke_view_colorer(self, method, *args):
         view = args[0]
         args = args[1:]
-        if view == "default": view = self.v
+        if view == "default":
+            view = self.v
         if view is not None:
             colorer = Colorer(view)
             getattr(colorer, method)(*args)
@@ -187,7 +190,7 @@ class EnsimeEventListenerProxy(EventListener):
         def is_ensime_event_listener(member):
             return inspect.isclass(member) and member != EnsimeEventListener and issubclass(member, EnsimeEventListener)
 
-        self.listeners = list(map(lambda info: info[1], inspect.getmembers(sys.modules[__name__], is_ensime_event_listener)))
+        self.listeners = [info[1] for info in inspect.getmembers(sys.modules[__name__], is_ensime_event_listener)]
 
     def _invoke(self, view, handler_name, *args):
         for listener in self.listeners:
@@ -251,11 +254,12 @@ class EnsimePreciseMouseCommand(EnsimeTextCommand):
     def _run_underlying(self, args):
         system_command = args["command"] if "command" in args else None
         if system_command:
-            system_args = dict({"event": args["event"]}.items() + args["args"].items())
+            system_args = dict(list({"event": args["event"]}.items()) + list(args["args"].items()))
             self.v.run_command(system_command, system_args)
 
     # note the underscore in "run_"
-    def run_(self, args):
+#    def run_(self, edit_token, args):
+    def run_(self, edit_token, args):
         if self.is_applicable():
             self.old_sel = [(r.a, r.b) for r in self.v.sel()]
             # unfortunately, running an additive drag_select is our only way of getting the coordinates of the click
@@ -336,6 +340,19 @@ class FocusedOnly:
     def is_enabled(self):
         return bool(self.is_running() and self.env.focus)
 
+class PrivateToolViewUpdateCommand(EnsimeTextCommand):
+    def run(self, edit, content):
+        self.view.replace(edit, Region(0, self.view.size()), content)
+        self.view.sel().clear()
+        self.view.sel().add(Region(0, 0))
+
+class PrivateToolViewAppendCommand(EnsimeTextCommand):
+    def run(self, edit, content):
+        selection_was_at_end = len(self.v.sel()) == 1 and self.v.sel()[0] == sublime.Region(self.v.size())
+        self.view.insert(edit, self.view.size(), content)
+        if selection_was_at_end:
+            self.view.show(self.view.size())
+
 
 class EnsimeToolView(EnsimeCommon):
     def __init__(self, env):
@@ -365,8 +382,8 @@ class EnsimeToolView(EnsimeCommon):
 
     @property
     def v(self):
-        wannabes = filter(lambda v: v.name() == self.name, self.w.views())
-        return next(wannabes, None) # OLD: wannabes[0] if wannabes else None
+        wannabes = [v for v in self.w.views() if v.name() == self.name]
+        return next(iter(wannabes), None)
 
     def _mk_v(self):
         v = self.w.new_file()
@@ -376,25 +393,20 @@ class EnsimeToolView(EnsimeCommon):
         return v
 
     def _update_v(self, content):
-        if self.v != None:
-            v = self.v
-            edit = v.begin_edit()
-            v.replace(edit, Region(0, v.size()), content)
-            v.end_edit(edit)
-            v.sel().clear()
-            v.sel().add(Region(0, 0))
+        if self.v is not None:
+            self.v.run_command("private_tool_view_update", {'content': content})
 
     def clear(self):
         self._update_v("")
 
     # TODO: ideally, rendering should only happen when a tool view is visible
     def refresh(self):
-        if self.v != None:
+        if self.v is not None:
             content = self.render() or ""
             self._update_v(content)
 
     def show(self):
-        if self.v == None:
+        if self.v is None:
             self._mk_v()
             self.refresh()
         self.w.focus_view(self.v)
@@ -425,7 +437,7 @@ class ClientSocket(EnsimeCommon):
                 handler.on_client_async_data(data)
 
     def receive_loop(self):
-        while self.connected:
+        while self.is_connected():
             try:
                 msglen = self.socket.recv(6)
                 if msglen:
@@ -449,13 +461,16 @@ class ClientSocket(EnsimeCommon):
                 else:
                     raise Exception("fatal error: recv returned None")
             except Exception:
-                self.log_client("*****    ERROR     *****")
-                self.log_client(traceback.format_exc())
-                self.connected = False
-                self.status_message("Ensime server has disconnected")
-                # todo. do we need to check session_ids somewhere else as well?
-                if self.env.session_id == self.session_id:
-                    self.env.controller.shutdown()
+                if self.is_connected():
+                    self.log_client("*****    ERROR     *****")
+                    self.log_client(traceback.format_exc())
+                    self.connected = False
+                    self.status_message("Ensime server has disconnected")
+                    # todo. do we need to check session_ids somewhere else as well?
+                    if self.env.session_id == self.session_id:
+                        self.env.controller.shutdown()
+                    else:
+                        self.log_client("Client Socket closed")
 
     def start_receiving(self):
         t = threading.Thread(name="ensime-client-" + str(self.w.id()) + "-" + str(self.port), target=self.receive_loop)
@@ -482,6 +497,13 @@ class ClientSocket(EnsimeCommon):
         finally:
             self._connect_lock.release()
 
+    def is_connected(self):
+        self._connect_lock.acquire()
+        try:
+            return self.connected
+        finally:
+            self._connect_lock.release()
+
     def send(self, request):
         try:
             if not self.connected:
@@ -503,13 +525,14 @@ class ClientSocket(EnsimeCommon):
 class Client(ClientListener, EnsimeCommon):
     def __init__(self, owner, port_file, timeout):
         super(Client, self).__init__(owner)
-        with open(port_file) as f: self.port = int(f.read())
+        with open(port_file) as f:
+            self.port = int(f.read())
         self.timeout = timeout
         self.init_counters()
-        methods_itr = filter(lambda m: m[0].startswith("message_"), inspect.getmembers(self, predicate=inspect.ismethod))
-        methods = list(methods_itr)
+        methods = [m for m in inspect.getmembers(self, predicate=inspect.ismethod) if m[0].startswith("message_")]
         self.log_client("reflectively found " + str(len(methods)) + " message handlers: " + str(methods))
         self.handlers = dict((":" + m[0][len("message_"):].replace("_", "-"), (m[1], None, None)) for m in methods)
+        self.socket = None
 
     def startup(self):
         self.log_client(
@@ -566,13 +589,7 @@ class Client(ClientListener, EnsimeCommon):
         self.feedback(str(data))
         self.handle_message(data)
 
-    # examples of responses can be seen here:
-    # http://docs.sublimescala.org
     def handle_message(self, data):
-        # (:return (:ok (:pid nil :server-implementation (:name "ENSIMEserver") :machine nil :features nil :version "0.0.1")) 1)
-        # (:background-message "Initializing Analyzer. Please wait...")
-        # (:compiler-ready t)
-        # (:typecheck-result (:lang :scala :is-full t :notes nil))
         msg_type = str(data[0])
         handler = self.handlers.get(msg_type)
         if handler:
@@ -580,18 +597,21 @@ class Client(ClientListener, EnsimeCommon):
             msg_id = data[-1] if msg_type == ":return" else None
             data = data[1:-1] if msg_type == ":return" else data[1:]
             payload = None
-            if len(data) == 1: payload = data[0]
-            if len(data) > 1: payload = data
+            if len(data) == 1:
+                payload = data[0]
+            if len(data) > 1:
+                payload = data
             return handler(msg_id, payload)
         else:
             self.log_client("handle_message: unexpected message type: " + msg_type)
 
     def message_return(self, msg_id, payload):
         handler, call_back_into_ui_thread, req_time = self.handlers.get(msg_id)
-        if handler: del self.handlers[msg_id]
+        if handler:
+            del self.handlers[msg_id]
 
         def invoke_subscribed_handler(success, payload=None):
-            if callable(handler):
+            if isinstance(handler, collections.Callable):
                 # only do async callbacks if the result is a success
                 # however note that we need to ping sync callbacks in any case
                 # in order to prevent freezes upon erroneous responses
@@ -607,7 +627,6 @@ class Client(ClientListener, EnsimeCommon):
         self.log_client("request #" + str(msg_id) + " took " + str(resp_time - req_time) + " seconds")
 
         reply_type = str(payload[0])
-        # (:return (:ok (:project-name nil :source-roots ("D:\\Dropbox\\Scratchpad\\Scala"))) 2)
         if reply_type == ":ok":
             payload = payload[1]
             if handler:
@@ -650,7 +669,8 @@ class Client(ClientListener, EnsimeCommon):
             msg + " This could be the start of a beautiful program, " + getpass.getuser().capitalize() + ".")
         self.colorize_all()
         v = self.w.active_view()
-        if self.in_project(v): v.run_command("save")
+        if self.in_project(v):
+            v.run_command("save")
 
     @call_back_into_ui_thread
     def message_indexer_ready(self, msg_id, payload):
@@ -668,7 +688,7 @@ class Client(ClientListener, EnsimeCommon):
     def _update_note_ui(self):
         self.redraw_all_highlights()
         v = self.w.active_view()
-        if v != None:
+        if v is not None:
             self.env.notee = v
             self.env.notes.refresh()
 
@@ -695,7 +715,8 @@ class Client(ClientListener, EnsimeCommon):
     @call_back_into_ui_thread
     def message_debug_event(self, msg_id, payload):
         debug_event = rpc.DebugEvent.parse(payload)
-        if debug_event: self.env.debugger.handle(debug_event)
+        if debug_event:
+            self.env.debugger.handle(debug_event)
 
     def init_counters(self):
         self._counter = 0
@@ -713,7 +734,8 @@ class Client(ClientListener, EnsimeCommon):
         detail = "Ensime server has encountered a fatal error: " + detail
         if detail.endswith(". Check the server log."):
             detail = detail[0:-len(". Check the server log.")]
-        if not detail.endswith("."): detail += "."
+        if not detail.endswith("."):
+            detail += "."
         detail += "\n\nCheck the server log at " + self.env.log_root + os.sep + "server.log" + "."
         return detail
 
@@ -735,7 +757,8 @@ class ServerProcess(EnsimeCommon):
 
         env = os.environ.copy()
         args = self.env.ensime_args or "-Xms256M -Xmx1512M -XX:PermSize=128m -Xss1M -Dfile.encoding=UTF-8"
-        if not "-Densime.explode.on.disconnect" in args: args += " -Densime.explode.on.disconnect=1"
+        if not "-Densime.explode.on.disconnect" in args:
+            args += " -Densime.explode.on.disconnect=1"
         env["ENSIME_JVM_ARGS"] = str(args)  # unicode not supported here
 
         if os.name == "nt":
@@ -773,7 +796,7 @@ class ServerProcess(EnsimeCommon):
             self.listeners = []
 
     def poll(self):
-        return self.proc.poll() == None
+        return self.proc.poll() is None
 
     def read_stdout(self):
         while True:
@@ -832,6 +855,7 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
         super(Controller, self).__init__(env.w)
         self.client = None
         self.server = None
+        self.port_file = None
 
     def mkdir_p(self, path):
         try:
@@ -925,12 +949,12 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
 
 class Daemon(EnsimeEventListener):
     def on_load(self):
-        # print "on_load"
+        # print("on_load")
         if self.is_running() and self.in_project():
             self.rpc.typecheck_file(SourceFileInfo(self.v.file_name()))
 
     def on_post_save(self):
-        # print "on_post_save"
+        # print("on_post_save")
         if self.is_running() and self.in_project():
             self.rpc.typecheck_file(SourceFileInfo(self.v.file_name()))
         if same_paths(self.v.file_name(), self.env.session_file):
@@ -938,18 +962,18 @@ class Daemon(EnsimeEventListener):
             self.redraw_all_breakpoints()
 
     def on_activated(self):
-        # print "on_activated"
+        # print("on_activated")
         self.colorize()
         if self.in_project():
             self.env.notee = self.v
             self.env.notes.refresh()
 
     def on_selection_modified(self):
-        # print "on_selection_modified"
+        # print("on_selection_modified")
         self.redraw_status()
 
     def on_modified(self):
-        # print "on_modified"
+        # print("on_modified")
         rs = self.v.get_regions(ENSIME_BREAKPOINT_REGION)
         if rs:
             irrelevant_breakpoints = [b for b in self.env.breakpoints if not same_paths(b.file_name, self.v.file_name())]
@@ -967,7 +991,7 @@ class Daemon(EnsimeEventListener):
 
 
 class Colorer(EnsimeCommon):
-    def colorize(self):
+    def colorize(self, view="default"):
         self.uncolorize()
         self.redraw_highlights()
         self.redraw_status()
@@ -1085,10 +1109,8 @@ class Colorer(EnsimeCommon):
             sublime.set_timeout(self.redraw_breakpoints, 100)
         else:
             if self.env:
-                relevant_breakpoints = filter(
-                    lambda breakpoint: same_paths(
-                        breakpoint.file_name, self.v.file_name()),
-                    self.env.breakpoints)
+                relevant_breakpoints = [breakpoint for breakpoint in self.env.breakpoints if same_paths(
+                    breakpoint.file_name, self.v.file_name())]
                 regions = [self.v.full_line(self.v.text_point(breakpoint.line - 1, 0))
                            for breakpoint in relevant_breakpoints]
                 self.v.add_regions(
@@ -1150,7 +1172,7 @@ class Completer(EnsimeEventListener):
         section_param_strs = [[param[1] for param in params] for params in sections]
         section_strs = ["(" + ", ".join(tpes) + ")" for tpes in
                         section_param_strs]
-        return ", ".join(section_strs) +": " + sig.result
+        return ", ".join(section_strs) + ": " + sig.result
 
     def _signature_snippet(self, sig):
         """Given a ensime CompletionSignature structure, returns a Sublime Text
@@ -1345,7 +1367,7 @@ class EnsimeInspectTypeAtPoint(RunningProjectFileOnly, EnsimeTextCommand):
             else:
                 summary = tpe.full_name
                 if tpe.type_args:
-                    summary += ("[" + ", ".join(map(lambda t: t.name, tpe.type_args)) + "]")
+                    summary += ("[" + ", ".join([t.name for t in tpe.type_args]) + "]")
             self.status_message(summary)
         else:
             self.status_message("Cannot find out type")
@@ -1386,13 +1408,15 @@ class EnsimeGoToDefinition(RunningProjectFileOnly, EnsimeTextCommand):
             if contents:
                 # todo. doesn't support mixed line endings
                 def detect_newline():
-                    if "\n" in contents and "\r" in contents: return "\r\n"
-                    if "\n" in contents: return "\n"
-                    if "\r" in contents: return "\r"
+                    if "\n" in contents and "\r" in contents:
+                        return "\r\n"
+                    if "\n" in contents:
+                        return "\n"
+                    if "\r" in contents:
+                        return "\r"
                     return None
 
                 zb_offset = info.decl_pos.offset
-                print("zb_offset", zb_offset)
                 newline = detect_newline()
                 zb_row = contents.count(newline, 0, zb_offset) if newline else 0
                 zb_col = zb_offset - contents.rfind(newline, 0, zb_offset) - len(newline) if newline else zb_offset
@@ -1447,10 +1471,10 @@ class EnsimeAddImport(RunningProjectFileOnly, EnsimeTextCommand):
     def handle_sugestions_response(self, info):
         # We only send one word in the request so there should only be one SymbolSearchResults in the response list
         results = info[0].results
-        names = map(lambda a: a.name, results)
+        names = [a.name for a in results]
 
         def do_refactor(i):
-            if (i > -1):
+            if i > -1:
                 params = [sym('qualifiedName'), names[i], sym('file'), self.v.file_name(), sym('start'), 0, sym('end'),
                           0]
                 self.rpc.prepare_refactor(1, sym('addImport'), params, False, self.handle_refactor_response)
@@ -1482,7 +1506,8 @@ class EnsimeAddImport(RunningProjectFileOnly, EnsimeTextCommand):
 class EnsimeBuild(ProjectExists, EnsimeWindowCommand):
     def run(self):
         cmd = sbt_command("compile")  # TODO: make this configurable
-        if cmd: self.w.run_command("exec", {"cmd": cmd, "working_dir": self.env.project_root})
+        if cmd:
+            self.w.run_command("exec", {"cmd": cmd, "working_dir": self.env.project_root})
 
 
 # ############################# SUBLIME COMMANDS: DEBUGGING ##############################
@@ -1494,16 +1519,16 @@ class EnsimeToggleBreakpoint(ProjectFileOnly, EnsimeTextCommand):
             zb_line, _ = self.v.rowcol(self.v.sel()[0].begin())
             line = zb_line + 1
             old_breakpoints = self.env.breakpoints
-            new_breakpoints = filter(
-                lambda b: not (same_paths(b.file_name, file_name) and b.line == line),
-                self.env.breakpoints)
+            new_breakpoints = [b for b in self.env.breakpoints if not (same_paths(b.file_name, file_name) and b.line == line)]
             if len(old_breakpoints) == len(new_breakpoints):
                 # add
                 new_breakpoints.append(dotsession.Breakpoint(file_name, line))
-                if self.env.profile: self.rpc.debug_set_break(file_name, line)
+                if self.env.profile:
+                    self.rpc.debug_set_break(file_name, line)
             else:
                 # remove
-                if self.env.profile: self.rpc.debug_clear_break(file_name, line)
+                if self.env.profile:
+                    self.rpc.debug_clear_break(file_name, line)
             self.env.breakpoints = new_breakpoints
             self.env.save_session()
             self.redraw_all_breakpoints()
@@ -1515,7 +1540,8 @@ class EnsimeClearBreakpoints(EnsimeWindowCommand):
         if self.env.breakpoints and sublime.ok_cancel_dialog(
                 "This will delete all breakpoints. Do you wish to continue?"):
             self.env.breakpoints = []
-            if self.env.profile: self.rpc.clear_all_breaks()
+            if self.env.profile:
+                self.rpc.clear_all_breaks()
             self.env.save_session()
             self.redraw_all_breakpoints()
 
@@ -1609,7 +1635,8 @@ class EnsimeDoubleClick(EnsimeSloppyMouseCommand):
 
     def run(self, edit):
         handler = self.calculate_handler()
-        if handler: handler.handle_event("double_click", self.v.sel()[0].a)
+        if handler:
+            handler.handle_event("double_click", self.v.sel()[0].a)
 
 
 class Debugger(EnsimeCommon):
@@ -1699,7 +1726,7 @@ class Debugger(EnsimeCommon):
                 rendered = "an unhandled exception has been thrown: "
                 rendered += (
                     str(self.rpc.debug_to_string(event.thread_id, DebugLocationReference(event.exception_id))) + "\n")
-                rendered += "\n".join(map(lambda line: "  " + line, self.env.stack.render().split("\n")))
+                rendered += "\n".join(["  " + line for line in self.env.stack.render().split("\n")])
                 # TODO: handle double click. it won't work for output, because it lacks a stack-like handler
                 self.env.output.append(rendered + "\n")
                 self.env.output.show()
@@ -1766,7 +1793,7 @@ class Focus(object):
 
 class Output(EnsimeToolView):
     def can_show(self):
-        return bool(self.env._output)
+        return not bool(self.env._output)
 
     @property
     def name(self):
@@ -1780,12 +1807,7 @@ class Output(EnsimeToolView):
         if data:
             self.env._output += data
             if self.v is not None:
-                selection_was_at_end = len(self.v.sel()) == 1 and self.v.sel()[0] == sublime.Region(self.v.size())
-                edit = self.v.begin_edit()
-                self.v.insert(edit, self.v.size(), data)
-                if selection_was_at_end:
-                    self.v.show(self.v.size())
-                self.v.end_edit(edit)
+                self.v.run_command("private_tool_view_append", {'content': data})
 
     def render(self):
         return self.env._output
@@ -1922,7 +1944,7 @@ class WatchValueReferenceNode(WatchNode):
         if self.value.length != 0:
             result = self.env.rpc.debug_to_string(self.env.focus.thread_id,
                                                   DebugLocationReference(self.value.object_id))
-            result = result if result != False and result is not None else "<failed to evaluate>"
+            result = result if result is not False and result is not None else "<failed to evaluate>"
             return result
         else:
             return "[]"
@@ -2082,7 +2104,7 @@ class Watches(EnsimeToolView):
             def render_node(node):
                 return "  " * (node.level - 1) + str(node.label) + " = " + str(node.description)
 
-            rendered.extend(map(render_node, self.nodes))
+            rendered.extend(list(map(render_node, self.nodes)))
         return "\n".join(rendered)
 
     def setup_events(self, v):
@@ -2092,7 +2114,8 @@ class Watches(EnsimeToolView):
     def handle_event(self, event, target):
         if event == "double_click":
             row, _ = self.v.rowcol(target)
-            if row < len(self.nodes): self.nodes[row].toggle()
+            if row < len(self.nodes):
+                self.nodes[row].toggle()
             self.refresh()
             sublime.set_timeout(self.clear_sel, 0)
 

@@ -1,5 +1,3 @@
-import re
-
 
 class Keyword:
     def __init__(self, s):
@@ -54,161 +52,161 @@ def read_relaxed(s):
     Unlike `read` this function allows ; comments
     and is more forgiving w.r.t whitespaces."""
     lines = s.splitlines()
-    lines = map(lambda line: line.strip(), lines)
-    lines = filter(lambda line: line, lines)
-    lines = filter(lambda line: not line.startswith(";"), lines)
+    lines = [line.strip() for line in lines]
+    lines = [line for line in lines if line]
+    lines = [line for line in lines if not line.startswith(";")]
     s = '\n'.join(lines)
     return read_form(s)[0]
 
 
-def read_form(str):
+def read_form(form):
     """Read a form."""
-    if len(str) == 0:
+    if len(form) == 0:
         raise SyntaxError('unexpected EOF while reading form')
-    ch = str[0]
+    ch = form[0]
     if ch.isspace():
         raise SyntaxError('unexpected whitespace while reading form')
     elif ch == '(':
-        return read_list(str)
+        return read_list(form)
     elif ch == '"':
-        return read_string(str)
+        return read_string(form)
     elif ch == ':':
-        return read_keyword(str)
+        return read_keyword(form)
     elif ch.isdigit() or ch == "-":
-        return read_int(str)
+        return read_int(form)
     elif ch.isalpha():
-        return read_symbol(str)
+        return read_symbol(form)
     elif ch == '\'':
-        return read_atom(str)
+        return read_atom(form)
     else:
         raise SyntaxError('unexpected character in read_form: ' + ch)
 
 
-def read_list(str):
+def read_list(form):
     """Read a list from a string."""
-    if len(str) == 0:
+    if len(form) == 0:
         raise SyntaxError('unexpected EOF while reading list')
-    if str[0] != '(':
-        raise SyntaxError('expected ( as first char of list: ' + str)
-    str = str[1:]
+    if form[0] != '(':
+        raise SyntaxError('expected ( as first char of list: ' + form)
+    form = form[1:]
     lst = []
-    while (len(str) > 0):
-        ch = str[0]
+    while len(form) > 0:
+        ch = form[0]
         if ch.isspace():
-            str = str[1:]
+            form = form[1:]
             continue
         elif ch == ')':
-            return (lst, str[1:])
+            return (lst, form[1:])
         else:
-            val, remain = read_form(str)
+            val, remain = read_form(form)
             lst.append(val)
-            str = remain
+            form = remain
     raise SyntaxError('EOF while reading list')
 
 
-def read_string(str):
+def read_string(form):
     """Read a string."""
-    if len(str) == 0:
+    if len(form) == 0:
         raise SyntaxError('unexpected EOF while reading string')
-    if str[0] != '"':
-        raise SyntaxError('expected ( as first char of string: ' + str)
-    str = str[1:]
+    if form[0] != '"':
+        raise SyntaxError('expected ( as first char of string: ' + form)
+    form = form[1:]
     s = ""
     escaped = False
-    while (len(str) > 0):
-        ch = str[0]
+    while len(form) > 0:
+        ch = form[0]
         if ch == '"' and not escaped:
-            return (s, str[1:])
+            return (s, form[1:])
         elif escaped:
             escaped = False
             s = s[:-1]  # remove the escaping backslash
         elif ch == "\\":
             escaped = True
         s = s + ch
-        str = str[1:]
+        form = form[1:]
     raise SyntaxError('EOF while reading string')
 
 
-def read_atom(str):
+def read_atom(form):
     """Read an atom."""
-    if len(str) == 0:
+    if len(form) == 0:
         raise SyntaxError('unexpected EOF while reading atom')
-    if str[0] != '\'':
-        raise SyntaxError('expected \' as first char of atom: ' + str)
-    str = str[1:]
+    if form[0] != '\'':
+        raise SyntaxError('expected \' as first char of atom: ' + form)
+    form = form[1:]
     s = ""
-    while (len(str) > 0):
-        ch = str[0]
+    while len(form) > 0:
+        ch = form[0]
         if ch.isspace():
-            return (s, str[1:])
+            return (s, form[1:])
         s = s + ch
-        str = str[1:]
+        form = form[1:]
     raise SyntaxError('EOF while reading atom')
 
 
-def read_keyword(str):
+def read_keyword(form):
     """Read a keyword."""
-    if len(str) == 0:
+    if len(form) == 0:
         raise SyntaxError('unexpected EOF while reading keyword')
-    if str[0] != ':':
+    if form[0] != ':':
         raise SyntaxError('expected : as first char of keyword')
-    str = str[1:]
+    form = form[1:]
     s = ""
-    while (len(str) > 0):
-        ch = str[0]
+    while len(form) > 0:
+        ch = form[0]
         if not (ch.isalpha() or ch.isdigit() or ch == '-'):
-            return (Keyword(":" + s), str)
+            return (Keyword(":" + s), form)
         else:
             s = s + ch
-            str = str[1:]
+            form = form[1:]
 
     if len(s) > 1:
-        return (Keyword(":" + s), str)
+        return (Keyword(":" + s), form)
     else:
         raise SyntaxError('EOF while reading keyword')
 
 
-def read_symbol(str):
+def read_symbol(form):
     """Read a symbol."""
-    if len(str) == 0:
+    if len(form) == 0:
         raise SyntaxError('unexpected EOF while reading symbol')
-    if not str[0].isalpha():
+    if not form[0].isalpha():
         raise SyntaxError('expected alpha char as first char of symbol')
     s = ""
-    while (len(str) > 0):
-        ch = str[0]
+    while len(form) > 0:
+        ch = form[0]
         if not (ch.isalpha() or ch.isdigit() or ch == '-' or ch == ":"):
             if s == "t":
-                return (True, str)
+                return (True, form)
             elif s == "nil":
-                return (False, str)
+                return (False, form)
             else:
-                return (Symbol(s), str)
+                return (Symbol(s), form)
         else:
             s = s + ch
-            str = str[1:]
+            form = form[1:]
 
     if len(s) > 0:
-        return (Symbol(s), str)
+        return (Symbol(s), form)
     else:
         raise SyntaxError('EOF while reading symbol')
 
 
-def read_int(str):
+def read_int(form):
     """Read an integer."""
-    if len(str) == 0:
+    if len(form) == 0:
         raise SyntaxError('unexpected EOF while reading int')
     s = ""
-    while (len(str) > 0):
-        ch = str[0]
+    while (len(form) > 0):
+        ch = form[0]
         if not (ch.isdigit() or ch == '-'):
-            return (int(s), str)
+            return (int(s), form)
         else:
             s = s + ch
-            str = str[1:]
+            form = form[1:]
 
     if len(s) > 0:
-        return (int(s), str)
+        return (int(s), form)
     else:
         raise SyntaxError('EOF while reading int')
 
@@ -232,10 +230,3 @@ def atom_to_str(exp):
         return "\"" + exp.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
     else:
         return str(exp)
-
-
-def repl(prompt='lis.py> '):
-    """A prompt-read-eval-print loop."""
-    while True:
-        val = eval(parse(raw_input(prompt)))
-        if val is not None: print(to_string(val))

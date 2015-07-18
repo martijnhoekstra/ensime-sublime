@@ -1,5 +1,9 @@
 from __future__ import unicode_literals
-import sublime, os, traceback, functools, sys
+import sublime
+import os
+import traceback
+import functools
+import sys
 from functools import partial as bind
 from . import sexp
 from .sexp import key, sym
@@ -59,4 +63,3 @@ def error_bad_config(window, f, ex):
 
 def edit(window):
     window.open_file(locations(window)[0])
-

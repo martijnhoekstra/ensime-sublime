@@ -1,4 +1,6 @@
-import sublime, os, functools
+import sublime
+import os
+import functools
 from functools import partial as bind
 
 
@@ -14,10 +16,12 @@ def _sbt_binary_exists():
         except os.error:
             pass
 
-    if check_file(_sbt_binary()): return True
+    if check_file(_sbt_binary()):
+        return True
     for pathdir in os.environ["PATH"].split(os.pathsep):
         fname = os.path.join(pathdir, _sbt_binary())
-        if check_file(fname): return True
+        if check_file(fname):
+            return True
 
 
 def _sbt_flags():

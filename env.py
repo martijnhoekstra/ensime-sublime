@@ -1,5 +1,7 @@
 import sublime
-import threading, uuid, os
+import threading
+import uuid
+import os
 from uuid import uuid4
 
 from . import paths, dotensime, dotsession
@@ -16,7 +18,7 @@ def for_window(window):
         envLock.acquire()
         try:
             if not (window.id() in ensime_envs):
-                # protection against reentrant EnsimeEnvironment calls
+                # protection against reentrant EnsimeEnvironment §s
                 ensime_envs[window.id()] = None
                 ensime_envs[window.id()] = EnsimeEnvironment(window)
             return ensime_envs[window.id()]
@@ -57,7 +59,7 @@ class EnsimeEnvironment(object):
                     if str(key) in literal_keys:
                         config[i + 1] = decode_path(config[i + 1])
                     elif str(key) in list_keys:
-                        config[i + 1] = map(lambda path: decode_path(path), config[i + 1])
+                        config[i + 1] = [decode_path(path) for path in config[i + 1]]
                     else:
                         pass
                     i += 2
@@ -85,7 +87,7 @@ class EnsimeEnvironment(object):
         (root, conf, _) = dotensime.load(self.w)
         self._project_root = root
         self._project_config = conf
-        self.valid = self.project_config != None
+        self.valid = self.project_config is not None
 
         # system stuff (mutable)
         self.session_id = uuid4()
@@ -202,7 +204,8 @@ class EnsimeEnvironment(object):
 
     def load_session(self):
         session = dotsession.load(self)
-        if session: self.breakpoints = session.breakpoints
+        if session:
+            self.breakpoints = session.breakpoints
         return session
 
     def save_session(self):
