@@ -494,6 +494,10 @@ class Rpc(object):
         pass
 
     @async_rpc()
+    def exec_refactor(self, procedure_id, refactor_type):
+        pass
+
+    @async_rpc()
     def debug_set_break(self, file_name, line):
         pass
 
