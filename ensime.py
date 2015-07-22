@@ -1481,9 +1481,12 @@ class EnsimeAddImport(RunningProjectFileOnly, EnsimeTextCommand):
             if i > -1:
                 params = [sym('qualifiedName'), names[i], sym('file'), self.v.file_name(), sym('start'), 0, sym('end'),
                           0]
-                self.rpc.prepare_refactor(1, sym('addImport'), params, False, self.handle_refactor_response)
+                self.rpc.prepare_refactor(1, sym('addImport'), params, False, self.handle_refactor_prepare_response)
 
         self.v.window().show_quick_panel(names, do_refactor)
+
+    def handle_refactor_prepare_response(self, response):
+        self.rpc.exec_refactor(1, sym('addImport'), self.handle_refactor_response)
 
     def handle_refactor_response(self, response):
         view = self.v
