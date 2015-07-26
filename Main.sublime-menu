@@ -32,6 +32,7 @@
                       { "caption": "Inspect type at point", "command": "ensime_inspect_type_at_point" },
                       { "caption": "Go to definition", "command": "ensime_go_to_definition" },
                       { "caption": "Add import", "command": "ensime_add_import" },
+                      { "caption": "Organize imports", "command": "ensime_organize_imports"},
                       { "caption": "Build", "command": "ensime_build" }
                     ]
                   },
