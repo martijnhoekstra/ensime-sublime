@@ -175,7 +175,14 @@ class SymbolSearchResult(ActiveRecord):
 
 class RefactorResult(ActiveRecord):
     def populate(self, m):
-        self.done = True
+        self.status = str(m[":status"])
+        self.procedure_id = m[":procedure-id"]
+        if self.status == "success":
+            self.done = True
+            pass
+        elif self.status == "failure":
+            self.done = False
+            self.reason = m[":reason"]
 
 
 class Member(ActiveRecord):
