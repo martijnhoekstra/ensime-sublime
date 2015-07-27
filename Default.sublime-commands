@@ -62,5 +62,9 @@
   {
     "caption": "Ensime: Add Import",
     "command": "ensime_add_import"
+  },
+  {
+    "caption": "Ensime: Organize Imports",
+    "command": "ensime_organize_imports"
   }
 ]

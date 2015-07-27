@@ -1461,34 +1461,19 @@ class EnsimeGoToDefinition(RunningProjectFileOnly, EnsimeTextCommand):
         v.show(region)
 
 
-class EnsimeAddImport(RunningProjectFileOnly, EnsimeTextCommand):
+# common superclass to make refactoring definitions a little less boiler-platey
+class EnsimeRefactoring(RunningProjectFileOnly, EnsimeTextCommand):
+
     def run(self, edit, target=None):
         pos = int(target or self.v.sel()[0].begin())
-        word = self.v.substr(self.v.word(pos))
-        if len(word.strip()) > 0:
-            if self.v.is_dirty():
-                self.v.run_command('save')
-            self.rpc.import_suggestions(self.v.file_name(), pos, [word],
-                                        self.env.settings.get("max_import_suggestions", 10),
-                                        self.handle_sugestions_response)
-
-    def handle_sugestions_response(self, info):
-        # We only send one word in the request so there should only be one SymbolSearchResults in the response list
-        results = info[0].results
-        names = [a.name for a in results]
-
-        def do_refactor(i):
-            if i > -1:
-                params = [sym('qualifiedName'), names[i], sym('file'), self.v.file_name(), sym('start'), 0, sym('end'),
-                          0]
-                self.rpc.prepare_refactor(1, sym('addImport'), params, False, self.handle_refactor_prepare_response)
-
-        self.v.window().show_quick_panel(names, do_refactor)
+        if self.v.is_dirty():
+            self.v.run_command('save')
+        self.invoke_refactoring(pos)
 
     def handle_refactor_prepare_response(self, response):
-        self.rpc.exec_refactor(1, sym('addImport'), self.handle_refactor_response)
+        self.rpc.exec_refactor(1, sym(self.refactoring_symbol()), self.handle_refactor_response)
 
-    def handle_refactor_response(self, response):
+    def handle_refactor_response(self, tpe):
         view = self.v
         original_size = view.size()
         original_pos = view.sel()[0].begin()
@@ -1508,6 +1493,41 @@ class EnsimeAddImport(RunningProjectFileOnly, EnsimeTextCommand):
                 view.show(new_pos)
 
         on_load()
+
+
+class EnsimeAddImport(EnsimeRefactoring):
+    def refactoring_symbol(self):
+        return 'addImport'
+
+    def invoke_refactoring(self, pos):
+        word = self.v.substr(self.v.word(pos))
+        if len(word.strip()) > 0:
+            self.rpc.import_suggestions(self.v.file_name(), pos, [word],
+                                        self.env.settings.get("max_import_suggestions", 20),
+                                        self.handle_sugestions_response)
+
+    def handle_sugestions_response(self, info):
+        # We only send one word in the request so there should only be one SymbolSearchResults in the response list
+        results = info[0].results
+        names = [a.name for a in results]
+
+        def do_refactor(i):
+            if i > -1:
+                params = [sym('qualifiedName'), names[i], sym('file'), self.v.file_name(), sym('start'), 0, sym('end'),
+                          0]
+                self.rpc.prepare_refactor(1, sym(self.refactoring_symbol()), params, False, self.handle_refactor_prepare_response)
+
+        self.v.window().show_quick_panel(names, do_refactor)
+
+
+class EnsimeOrganizeImports(EnsimeRefactoring):
+
+    def refactoring_symbol(self):
+        return 'organizeImports'
+
+    def invoke_refactoring(self, pos):
+        params = [sym('file'), self.v.file_name()]
+        self.rpc.prepare_refactor(1, sym(self.refactoring_symbol()), params, False, self.handle_refactor_prepare_response)
 
 
 class EnsimeBuild(ProjectExists, EnsimeWindowCommand):
