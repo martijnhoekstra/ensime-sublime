@@ -2,9 +2,15 @@ from __future__ import unicode_literals
 import sublime
 from sublime import *
 from sublime_plugin import *
-import os, threading, socket, getpass, signal, glob, errno
-import subprocess, tempfile, datetime, time, json, zipfile
-import functools, inspect, traceback, random, re, sys
+import threading
+import _thread
+import socket
+import getpass
+import errno
+import subprocess
+import time
+import traceback
+import random
 import uuid
 from functools import partial as bind
 from os import path
@@ -14,6 +20,7 @@ import collections
 import re
 import html
 
+from .server import *
 from . import env, dotensime, dotsession, rpc, sexp
 from .sexp import key, sym
 from .constants import *
@@ -21,18 +28,19 @@ from .rpc import *
 from .sbt import *
 from .strings import *
 
-
 class EnsimeCommon(object):
     def __init__(self, owner):
         self.owner = owner
         if type(owner) == Window:
             self._env = env.for_window(owner)
+            self.logger = self._env.logger
             self._recalc_session_id()
             self.w = owner
         elif type(owner) == View:
             # todo. find out why owner.window() is sometimes None
             w = owner.window() or sublime.active_window()
             self._env = env.for_window(w)
+            self.logger = self._env.logger
             self._recalc_session_id()
             self.w = w
             self.v = owner
@@ -58,37 +66,6 @@ class EnsimeCommon(object):
 
     def error_message(self, msg):
         sublime.set_timeout(bind(sublime.error_message, msg), 0)
-
-    def log(self, data):
-        sublime.set_timeout(bind(self.log_on_ui_thread, "ui", data), 0)
-
-    def log_client(self, data):
-        sublime.set_timeout(bind(self.log_on_ui_thread, "client", data), 0)
-
-    def log_server(self, data):
-        sublime.set_timeout(bind(self.log_on_ui_thread, "server", data), 0)
-
-    def log_on_ui_thread(self, flavor, data):
-        if flavor in self.env.settings.get("log_to_console", {}):
-            print(data.strip())
-        if flavor in self.env.settings.get("log_to_file", {}):
-            try:
-                if not os.path.exists(self.env.log_root):
-                    os.mkdir(self.env.log_root)
-                file_name = self.env.log_root + os.sep + flavor + ".log"
-                with open(file_name, "a") as f:
-                    f.write(self.prepare_log_message(data))
-            except:
-                exc_type, exc_value, exc_tb = sys.exc_info()
-                detailed_info = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
-                print(detailed_info)
-
-    def prepare_log_message(self, data):
-        stripped_data = data.strip()
-        buffer = "[" + str(datetime.datetime.now()) + "]: "
-        buffer += stripped_data
-        buffer += "\n"
-        return buffer
 
     def is_valid(self):
         return bool(self.env and self.env.valid)
@@ -288,7 +265,7 @@ class EnsimePreciseMouseCommand(EnsimeTextCommand):
                 self.run(self.diff[0][0])
             else:
                 # this shouldn't happen
-                self.log("len(diff) > 1: command = " + str(type(self)) + ", old_sel = " + str(
+                self.logger.warn("len(diff) > 1: command = " + str(type(self)) + ", old_sel = " + str(
                     self.old_sel) + ", new_sel = " + str(self.new_sel))
         else:
             self._run_underlying(args)
@@ -459,21 +436,21 @@ class ClientSocket(EnsimeCommon):
                         form = sexp.read(s)
                         self.notify_async_data(form)
                     except:
-                        self.log_client("failed to parse incoming message")
+                        self.logger.warn("failed to parse incoming message")
                         raise
                 else:
                     raise Exception("fatal error: recv returned None")
             except Exception:
                 if self.is_connected():
-                    self.log_client("*****    ERROR     *****")
-                    self.log_client(traceback.format_exc())
+                    self.logger.error("*****    ERROR     *****")
+                    self.logger.error(traceback.format_exc())
                     self.connected = False
                     self.status_message("Ensime server has disconnected")
                     # todo. do we need to check session_ids somewhere else as well?
                     if self.env.session_id == self.session_id:
                         self.env.controller.shutdown()
                     else:
-                        self.log_client("Client Socket closed")
+                        self.logger.warn("Client Socket closed")
 
     def start_receiving(self):
         t = threading.Thread(name="ensime-client-" + str(self.w.id()) + "-" + str(self.port), target=self.receive_loop)
@@ -496,7 +473,7 @@ class ClientSocket(EnsimeCommon):
             return s
         except socket.error as e:
             self.connected = False
-            self.log_client("Cannot connect to Ensime server:  " + str(e.args))
+            self.logger.error("Cannot connect to Ensime server:  " + str(e.args))
             self.status_message("Cannot connect to Ensime server at " + host + ":" + str(self.port) + " " + str(e.args))
             self.env.controller.shutdown()
         finally:
@@ -535,14 +512,14 @@ class Client(ClientListener, EnsimeCommon):
         self.timeout = timeout
         self.init_counters()
         methods = [m for m in inspect.getmembers(self, predicate=inspect.ismethod) if m[0].startswith("message_")]
-        self.log_client("reflectively found " + str(len(methods)) + " message handlers: " + str(methods))
+        self.logger.debug("reflectively found " + str(len(methods)) + " message handlers: " + str(methods))
         self.handlers = dict((":" + m[0][len("message_"):].replace("_", "-"), (m[1], None, None)) for m in methods)
         self.socket = None
 
     def startup(self):
-        self.log_client(
-            "Starting Ensime client (plugin version is " + (self.env.settings.get("plugin_version") or "unknown") + ")")
-        self.log_client("Launching Ensime client socket at port " + str(self.port))
+        self.logger.info("Starting Ensime client (plugin version is " +
+                         (self.env.settings.get("plugin_version") or "unknown") + ")")
+        self.logger.info("Launching Ensime client socket at port " + str(self.port))
         self.socket = ClientSocket(self.owner, self.port, self.timeout, [self, self.env.controller])
         return self.socket.connect()
 
@@ -561,37 +538,35 @@ class Client(ClientListener, EnsimeCommon):
 
         msg_id = self.next_message_id()
         self.handlers[msg_id] = (on_complete, call_back_into_ui_thread, time.time())
-        msg_str = sexp.to_string([key(":swank-rpc"), to_send, msg_id])
-        msg_str = "%06x" % len(msg_str) + msg_str
-
-        self.feedback(msg_str)
-        self.log_client("async_req: " + str(msg_id) + "  " + msg_str)
-        self.socket.send(msg_str.encode('utf-8'))
+        msg = sexp.to_string([key(":swank-rpc"), to_send, msg_id])
+        encoded_msg = msg.encode('utf-8')
+        self.logger.info("request #" + str(msg_id) + "(async) send - " + str(encoded_msg[0:100]) + "...")
+        msg_bytes = ("%06x" % len(encoded_msg)).encode('utf-8') + encoded_msg
+        self.logger.debug("async_req: " + str(msg_id) + "  " + str(msg_bytes))
+        self.socket.send(msg_bytes)
 
     def sync_req(self, to_send, timeout=0):
         msg_id = self.next_message_id()
         event = threading.Event()
         self.handlers[msg_id] = (event, None, time.time())
-        msg_str = sexp.to_string([key(":swank-rpc"), to_send, msg_id])
-        msg_str = "%06x" % len(msg_str) + msg_str
-
-        self.feedback(msg_str)
-        self.log_client("SEND SYNC REQ: " + msg_str)
-        self.socket.send(msg_str.encode('utf-8'))
+        msg = sexp.to_string([key(":swank-rpc"), to_send, msg_id])
+        encoded_msg = msg.encode('utf-8')
+        msg_bytes = ("%06x" % len(encoded_msg)).encode('utf-8') + encoded_msg
+        self.logger.info("request #" + str(msg_id) + "(sync) send - " + str(encoded_msg[0:100]) + "...")
+        self.logger.debug("sync_req: " + str(msg_bytes))
+        self.socket.send(msg_bytes)
 
         max_wait = timeout or self.timeout
         event.wait(max_wait)
         if hasattr(event, "payload"):
             return event.payload
         else:
-            self.log_client("sync_req #" + str(msg_id) +
-                            " has timed out (didn't get a response after " +
-                            str(max_wait) + " seconds)")
+            self.logger.warn("sync_req #" + str(msg_id) + " has timed out (didn't get a response after " +
+                             str(max_wait) + " seconds)")
             return None
 
     def on_client_async_data(self, data):
-        self.log_client("on_client_async_data: " + str(data))
-        self.feedback(str(data))
+        self.logger.debug("on_client_async_data: " + str(data))
         self.handle_message(data)
 
     def handle_message(self, data):
@@ -608,7 +583,7 @@ class Client(ClientListener, EnsimeCommon):
                 payload = data
             return handler(msg_id, payload)
         else:
-            self.log_client("handle_message: unexpected message type: " + msg_type)
+            self.logger.warn("handle_message: unexpected message type: " + msg_type)
 
     def message_return(self, msg_id, payload):
         handler, call_back_into_ui_thread, req_time = self.handlers.get(msg_id)
@@ -629,7 +604,7 @@ class Client(ClientListener, EnsimeCommon):
                 handler.set()
 
         resp_time = time.time()
-        self.log_client("request #" + str(msg_id) + " took " + str(resp_time - req_time) + " seconds")
+        self.logger.info("request #" + str(msg_id) + " took " + str(resp_time - req_time) + " seconds")
 
         reply_type = str(payload[0])
         if reply_type == ":ok":
@@ -637,8 +612,8 @@ class Client(ClientListener, EnsimeCommon):
             if handler:
                 invoke_subscribed_handler(success=True, payload=payload)
             else:
-                self.log_client(
-                    "warning: no handler registered for message #" + str(msg_id) + " with payload " + str(payload))
+                self.logger.warn("warning: no handler registered for message #" + str(msg_id) +
+                                 " with payload " + str(payload))
         # (:return (:abort 210 "Error occurred in Analyzer. Check the server log.") 3)
         elif reply_type == ":abort":
             detail = payload[2]
@@ -656,7 +631,7 @@ class Client(ClientListener, EnsimeCommon):
             self.error_message(self.prettify_error_detail(detail))
         else:
             invoke_subscribed_handler(success=False)
-            self.log_client("unexpected reply type: " + reply_type)
+            self.logger.warn("unexpected reply type: " + reply_type)
 
     def call_back_into_ui_thread(vanilla):
         def wrapped(self, msg_id, payload):
@@ -667,7 +642,8 @@ class Client(ClientListener, EnsimeCommon):
     @call_back_into_ui_thread
     def message_compiler_ready(self, msg_id, payload):
         self.env.compiler_ready = True
-        filename = self.env.plugin_root + os.sep + "Encouragements.txt"
+
+        filename = os.path.join(sublime.packages_path(), "Ensime", "Encouragements.txt")
         lines = [line.strip() for line in open(filename)]
         msg = lines[random.randint(0, len(lines) - 1)]
         self.status_message(
@@ -699,22 +675,22 @@ class Client(ClientListener, EnsimeCommon):
 
     @call_back_into_ui_thread
     def message_java_notes(self, msg_id, payload):
-        self.env._notes.append(rpc.Note.parse_list(payload))
+        self.env.notes_storage.append(rpc.Note.parse_list(payload))
         self._update_note_ui()
 
     @call_back_into_ui_thread
     def message_scala_notes(self, msg_id, payload):
-        self.env._notes.append(rpc.Note.parse_list(payload))
+        self.env.notes_storage.append(rpc.Note.parse_list(payload))
         self._update_note_ui()
 
     @call_back_into_ui_thread
     def message_clear_all_java_notes(self, msg_id, _):
-        self.env._notes.filter(lambda n: not n.file_name.endswith(".java"))
+        self.env.notes_storage.filter(lambda n: not n.file_name.endswith(".java"))
         self._update_note_ui()
 
     @call_back_into_ui_thread
     def message_clear_all_scala_notes(self, msg_id, _):
-        self.env._notes.filter(lambda n: not n.file_name.endswith(".scala"))
+        self.env.notes_storage.filter(lambda n: not n.file_name.endswith(".scala"))
         self._update_note_ui()
 
     @call_back_into_ui_thread
@@ -741,12 +717,8 @@ class Client(ClientListener, EnsimeCommon):
             detail = detail[0:-len(". Check the server log.")]
         if not detail.endswith("."):
             detail += "."
-        detail += "\n\nCheck the server log at " + self.env.log_root + os.sep + "server.log" + "."
+        detail += "\n\nCheck the server log at " + str(os.path.join(self.env.log_root, "server.log")) + "."
         return detail
-
-    def feedback(self, msg):
-        msg = msg.replace("\r\n", "\n").replace("\r", "\n") + "\n"
-        self.log_client(msg)
 
 
 class ServerListener:
@@ -755,16 +727,17 @@ class ServerListener:
 
 
 class ServerProcess(EnsimeCommon):
-    def __init__(self, owner, command, listeners):
+    def __init__(self, owner, command, run_dir, listeners):
         super(ServerProcess, self).__init__(owner)
+        self.logger.info("Starting: " + str(command))
+        self.logger.info("Run dir: " + run_dir)
         self.killed = False
         self.listeners = listeners or []
 
-        env = os.environ.copy()
-        args = self.env.ensime_args or "-Xms256M -Xmx1512M -XX:PermSize=128m -Xss1M -Dfile.encoding=UTF-8"
-        if not "-Densime.explode.on.disconnect" in args:
-            args += " -Densime.explode.on.disconnect=1"
-        env["ENSIME_JVM_ARGS"] = str(args)  # unicode not supported here
+        exec_env = os.environ.copy()
+        # if not "-Densime.explode.on.disconnect" in args:
+        #     args += " -Densime.explode.on.disconnect=1"
+        # env["ENSIME_JVM_ARGS"] = str(args)  # unicode not supported here
 
         if os.name == "nt":
             startupinfo = subprocess.STARTUPINFO()
@@ -777,27 +750,28 @@ class ServerProcess(EnsimeCommon):
                 stderr=subprocess.PIPE,
                 startupinfo=startupinfo,
                 creationflags=creationflags,
-                env=env,
-                cwd=self.env.server_path)
+                env=exec_env,
+                cwd=run_dir)
         else:
             self.proc = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env=env,
-                cwd=self.env.server_path)
-        self.log_server("started ensime server with pid " + str(self.proc.pid))
+                env=exec_env,
+                cwd=run_dir)
+        self.logger.info("started ensime server with pid " + str(self.proc.pid))
 
         if self.proc.stdout:
-            thread.start_new_thread(self.read_stdout, ())
+            _thread.start_new_thread(self.read_stdout, ())
 
         if self.proc.stderr:
-            thread.start_new_thread(self.read_stderr, ())
+            _thread.start_new_thread(self.read_stderr, ())
 
     def kill(self):
         if not self.killed:
             self.killed = True
-            self.proc.kill()
+            # send terminate rather than kill, so the server process cleans up nicely.
+            self.proc.terminate()
             self.listeners = []
 
     def poll(self):
@@ -806,10 +780,10 @@ class ServerProcess(EnsimeCommon):
     def read_stdout(self):
         while True:
             data = os.read(self.proc.stdout.fileno(), 2 ** 15)
-            if data != "":
+            if data != b"":
                 for listener in self.listeners:
                     if listener:
-                        listener.on_server_data(data)
+                        listener.on_server_data("OUT: " + str(data))
             else:
                 self.proc.stdout.close()
                 break
@@ -817,63 +791,129 @@ class ServerProcess(EnsimeCommon):
     def read_stderr(self):
         while True:
             data = os.read(self.proc.stderr.fileno(), 2 ** 15)
-            if data != "":
+            if data != b"":
                 for listener in self.listeners:
                     if listener:
-                        listener.on_server_data(data)
+                        listener.on_server_data("ERR: " + str(data))
             else:
                 self.proc.stderr.close()
                 break
 
-
 class Server(ServerListener, EnsimeCommon):
     def __init__(self, owner, port_file):
+        """
+        :param owner: The parent window
+        :param config_map: The .ensime config file as a key-value map
+        :param port_file:
+        :return:
+        """
         super(Server, self).__init__(owner)
+        self.dotensime_file = self.env.dotensime_file
+        self.config_map = self.env.config_map
+        self.cache_dir = self.config_map.get(":cache-dir")
+        self.scala_version = self.config_map.get(":scala-version")
+        self.java_home = self.config_map.get(":java-home")
+        self.java_flags = self.config_map.get(":java-flags")
+        self.ensime_version = "0.9.10-SNAPSHOT"
         self.port_file = port_file
         self.proc = None
+        self.classpath = None
 
     def startup(self):
+        os_sep = str(os.sep)
+        self.logger.info("-----------------------------------------------------------")
+        self.logger.info("Initialising server")
+        self.logger.info("Cache dir = " + self.cache_dir)
+        self.logger.info("Java home = " + self.java_home)
+        self.logger.info("Target scala version  = " + self.scala_version)
+
+        mkdir_p(self.cache_dir)
+
+        resolution_dir = self.cache_dir + os_sep + "Resolution"
+        mkdir_p(resolution_dir)
+        classpath_file = resolution_dir + os_sep + "classpath"
+        classpath_log = resolution_dir + os_sep + "sbt.log"
+        project_dir = resolution_dir + os_sep + "project"
+        mkdir_p(project_dir)
+        build_file = resolution_dir + os_sep + "build.sbt"
+        build_props_file = resolution_dir + os_sep + "build.properties"
+
+        write_classpath_sbt_script(build_file, self.scala_version, self.ensime_version, classpath_file)
+        write_build_props_file(build_props_file)
+
+        self.logger.info("Resolving, log available in " + classpath_log)
+        self.logger.info("Running sbt saveClasspath (in " + str(resolution_dir) + ")")
+
+        cmd = sbt_binary_and_flags()
+
+        if cmd:
+            fn = bind(self.startup2)
+            exec_save_classpath(self.logger, cmd, resolution_dir, classpath_file, fn)
+
+    def startup2(self, classpath):
+        """
+        This function will be called by a background thread - bounce to the gui thread
+        :param classpath: The classpath returned from the exec_save_classpath
+        """
+        sublime.set_timeout(bind(self.startup3, classpath), 0)
+
+    def startup3(self, classpath):
+        os_sep = str(os.sep)
+        os_path_sep = str(os.pathsep)
+
+        if classpath is not None:
+            self.classpath = str(os.path.join(self.java_home, "lib","tools.jar")) + os_path_sep + classpath
+            self.logger.info("Target classpath  = " + self.classpath)
+        else:
+            self.logger.error("Failed to generate classpath")
+
         ensime_command = self.get_ensime_command()
-        if self.get_ensime_command():
-            self.log_server("Starting Ensime server (plugin version is " + (
+        if ensime_command:
+            self.logger.info("Starting Ensime server (plugin version is " + (
                 self.env.settings.get("plugin_version") or "unknown") + ")")
-            self.log_server(
-                "Launching Ensime server process with command = " + str(ensime_command) + " and args = " + str(
-                    self.env.ensime_args))
-            self.proc = ServerProcess(self.owner, "java -jar ....", [self, self.env.controller])
+            self.logger.info(
+                "Launching Ensime server process with command = " + str(ensime_command) + " and flags = " +
+                str(self.java_flags))
+
+            ensime_cfg_flag = "-Densime.config=" + self.dotensime_file
+            classpath_part = ["-classpath", self.classpath, ensime_cfg_flag]
+            cmd = [ensime_command] + classpath_part + self.java_flags + ["-Densime.explode.on.disconnect=true",
+                                                                         "org.ensime.server.Server"]
+
+            self.proc = ServerProcess(self.owner, cmd, self.cache_dir, [self, self.env.controller])
             return True
 
     def get_ensime_command(self):
-        return ["", self.port_file]
+        cmd = path.join(self.java_home, "bin", "java")
+        return cmd
 
     def on_server_data(self, data):
         str_data = str(data).replace("\r\n", "\n").replace("\r", "\n")
-        self.log_server(str_data)
+        self.logger.info("Server: " + str_data.strip())
 
     def shutdown(self):
         self.proc.kill()
         self.proc = None
 
+def mkdir_p(dir_path):
+    try:
+        os.makedirs(dir_path)
+    except OSError as exc:  # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(dir_path):
+            pass
+        else:
+            raise
+
 
 class Controller(EnsimeCommon, ClientListener, ServerListener):
-    def __init__(self, env):
-        super(Controller, self).__init__(env.w)
+    def __init__(self, env2):
+        super(Controller, self).__init__(env2.w)
         self.client = None
         self.server = None
         self.port_file = None
 
-    def mkdir_p(self, path):
-        try:
-            os.makedirs(path)
-        except OSError as exc:  # Python >2.5
-            if exc.errno == errno.EEXIST and os.path.isdir(path):
-                pass
-            else:
-                raise
-
     def startup(self):
-        config_map = sexp.sexp_to_key_map(self.env.project_config)
-        cache_dir = config_map.get(":cache-dir")
+        cache_dir = self.env.cache_dir
         port_file = path.join(cache_dir, "port")
         try:
             if not self.env.running:
@@ -883,15 +923,17 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
                         message = "\"connect_to_external_server\" in your Ensime.sublime-settings is set to true, "
                         message += "however \"external_server_port_file\" is not specified. "
                         message += "Set it to a meaningful value and restart Ensime."
+                        self.logger.error(message)
                         sublime.set_timeout(bind(sublime.error_message, message), 0)
-                        raise Exception("external_server_port_file not specified")
+                        return
                     if not os.path.exists(self.port_file):
                         message = "\"connect_to_external_server\" in your Ensime.sublime-settings is set to true, "
-                        message += (
-                            "however \"external_server_port_file\" is set to a non-existent file \"" + self.port_file + "\" . ")
+                        message += "however \"external_server_port_file\" is set to a non-existent file \""
+                        message += (self.port_file + "\" . ")
                         message += "Check the configuration and restart Ensime."
+                        self.logger.error(message)
                         sublime.set_timeout(bind(sublime.error_message, message), 0)
-                        raise Exception("external_server_port_file not specified")
+                        return
                     self.server = None
                     self.env.running = True
                     sublime.set_timeout(self.ignition, 0)
@@ -904,7 +946,8 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
             raise
 
     def on_server_data(self, data):
-        if not self.env.running and re.search("Wrote port", data):
+        if not self.env.running and re.search("creating portfile", data):
+            self.logger.info("SEEN port write")
             self.env.running = True
             sublime.set_timeout(self.ignition, 0)
 
@@ -921,27 +964,27 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
                 try:
                     self.env.debugger.shutdown()
                 except:
-                    self.log("Error shutting down ensime debugger:")
-                    self.log(traceback.format_exc())
+                    self.logger.error("Error shutting down ensime debugger:")
+                    self.logger.error(traceback.format_exc())
                 try:
-                    self.env._notes.clear()
+                    self.env.notes_storage.clear()
                     sublime.set_timeout(self.uncolorize_all, 0)
                     sublime.set_timeout(self.env.notes.clear, 0)
                 except:
-                    self.log("Error shutting down ensime UI:")
-                    self.log(traceback.format_exc())
+                    self.logger.error("Error shutting down ensime UI:")
+                    self.logger.error(traceback.format_exc())
                 try:
                     if self.client:
                         self.client.shutdown()
                 except:
-                    self.log_client("Error shutting down ensime client:")
-                    self.log(traceback.format_exc())
+                    self.logger.error("Error shutting down ensime client:")
+                    self.logger.error(traceback.format_exc())
                 try:
                     if self.server:
                         self.server.shutdown()
                 except:
-                    self.log_server("Error shutting down ensime server:")
-                    self.log(traceback.format_exc())
+                    self.logger.error("Error shutting down ensime server:")
+                    self.logger.error(traceback.format_exc())
         finally:
             self.port_file = None
             self.env.running = False
@@ -954,12 +997,10 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
 
 class Daemon(EnsimeEventListener):
     def on_load(self):
-        # print("on_load")
         if self.is_running() and self.in_project():
             self.rpc.typecheck_file(SourceFileInfo(self.v.file_name()))
 
     def on_post_save(self):
-        # print("on_post_save")
         if self.is_running() and self.in_project():
             self.rpc.typecheck_file(SourceFileInfo(self.v.file_name()))
         if same_paths(self.v.file_name(), self.env.session_file):
@@ -967,18 +1008,15 @@ class Daemon(EnsimeEventListener):
             self.redraw_all_breakpoints()
 
     def on_activated(self):
-        # print("on_activated")
         self.colorize()
         if self.in_project():
             self.env.notee = self.v
             self.env.notes.refresh()
 
     def on_selection_modified(self):
-        # print("on_selection_modified")
         self.redraw_status()
 
     def on_modified(self):
-        # print("on_modified")
         rs = self.v.get_regions(ENSIME_BREAKPOINT_REGION)
         if rs:
             irrelevant_breakpoints = [b for b in self.env.breakpoints if not same_paths(b.file_name, self.v.file_name())]
@@ -1004,7 +1042,7 @@ class Colorer(EnsimeCommon):
         self.redraw_debug_focus()
         self.redraw_stack_focus()
 
-    def uncolorize(self):
+    def uncolorize(self, view="default"):
         self.v.erase_regions(ENSIME_ERROR_OUTLINE_REGION)
         self.v.erase_regions(ENSIME_ERROR_UNDERLINE_REGION)
         # don't erase breakpoints, they should be permanent regardless of whether ensime is running or not
@@ -1013,12 +1051,12 @@ class Colorer(EnsimeCommon):
         self.v.erase_regions(ENSIME_STACKFOCUS_REGION)
         self.redraw_status()
 
-    def redraw_highlights(self):
+    def redraw_highlights(self, view="default"):
         self.v.erase_regions(ENSIME_ERROR_OUTLINE_REGION)
         self.v.erase_regions(ENSIME_ERROR_UNDERLINE_REGION)
 
         if self.env:
-            relevant_notes = self.env._notes.for_file(self.v.file_name())
+            relevant_notes = self.env.notes_storage.for_file(self.v.file_name())
 
             # Underline specific error range
             underlines = [sublime.Region(note.start, note.end) for note in relevant_notes]
@@ -1052,12 +1090,11 @@ class Colorer(EnsimeCommon):
             self._update_statusbar(custom_status)
         elif self.env and self.env.settings.get("ensime_statusbar_showerrors"):
             if self.v.sel():
-                relevant_notes = self.env._notes.for_file(self.v.file_name())
+                relevant_notes = self.env.notes_storage.for_file(self.v.file_name())
                 bol = self.v.line(self.v.sel()[0].begin()).begin()
                 eol = self.v.line(self.v.sel()[0].begin()).end()
                 msgs = [note.message for note in relevant_notes
-                        if (bol <= note.start and note.start <= eol) or
-                        (bol <= note.end and note.end <= eol)]
+                        if (bol <= note.start <= eol) or (bol <= note.end <= eol)]
                 self._update_statusbar("; ".join(msgs))
         else:
             self._update_statusbar(None)
@@ -1338,7 +1375,7 @@ class Notes(EnsimeToolView):
     def render(self):
         lines = []
         if self.env.notee:
-            relevant_notes = self.env._notes.for_file(self.env.notee.file_name())
+            relevant_notes = self.env.notes_storage.for_file(self.env.notee.file_name())
             for note in relevant_notes:
                 loc = self.project_relative_path(note.file_name) + ":" + str(note.line)
                 severity = note.severity
@@ -1352,7 +1389,8 @@ class Notes(EnsimeToolView):
 
 class EnsimeSingleClick(EnsimePreciseMouseCommand):
     def is_applicable(self):
-        return self.env.settings.get("single_click_inspects_type_at_point") and super(EnsimeSingleClick, self).is_applicable()
+        return self.env.settings.get("single_click_inspects_type_at_point") and \
+               super(EnsimeSingleClick, self).is_applicable()
 
     def run(self, target):
         self.v.run_command("ensime_inspect_type_at_point_status", {"target": target})
@@ -1432,8 +1470,8 @@ class EnsimeHandleSymbolInfo(EnsimeCommon):
                 def open_file():
                     return self.w.open_file("%s:%d:%d" % (file_name, zb_row + 1, zb_col + 1), sublime.ENCODED_POSITION)
 
-                w = self.w or sublime.active_window()
-                g, i = (None, None)
+                # w = self.w or sublime.active_window()
+                # g, i = (None, None)
                 if self.v is not None and same_paths(self.v.file_name(), file_name):
                     # open_file doesn't work, so we have to work around
                     # open_file()
@@ -1510,7 +1548,8 @@ class EnsimeInspectType:
                 if is_tooltip:
                     # grab any type args from the description first
                     type_args = "" if type_desc[0] != '[' else html.escape(type_desc[0:type_desc.find('](') + 1])
-                    param_section_list = "".join([self.format_param_list(ps, begin, end, is_tooltip) for ps in param_sections])
+                    param_section_list = "".join([self.format_param_list(ps, begin, end, is_tooltip)
+                                                  for ps in param_sections])
                     res = "<a href={0}>{1}</a>".format(html.escape(full_name), html.escape(name))
                     if param_section_list:
                         res = "{0}{1}: {2}".format(type_args, param_section_list, res)
@@ -1529,13 +1568,14 @@ class EnsimeInspectType:
         return None
 
 
-class EnsimeInspectTypeAtPointTooltip(RunningProjectFileOnly, EnsimeTextCommand, EnsimeHandleSymbolInfo, EnsimeInspectType):
+class EnsimeInspectTypeAtPointTooltip(RunningProjectFileOnly, EnsimeTextCommand, EnsimeHandleSymbolInfo,
+                                      EnsimeInspectType):
     def run(self, edit, target=None):
         pos = int(target or self.v.sel()[0].begin())
         self.rpc.type_at_point(self.v.file_name(), pos, self.handle_reply)
 
     def handle_reply(self, tpe):
-        self.log_client("EnsimeInspectTypeTooltip.handleReply: " + str(tpe))
+        self.logger.info("EnsimeInspectTypeTooltip.handleReply: " + str(tpe))
         markup = self.parse_tpe(tpe, is_tooltip=True)
         if tpe:
             font_size = sublime.load_settings("Preferences.sublime-settings").get("font_size", 14)
@@ -1552,13 +1592,14 @@ class EnsimeInspectTypeAtPointTooltip(RunningProjectFileOnly, EnsimeTextCommand,
         self.rpc.symbol_by_name(symbol, [], [], self.handle_symbol_info)
 
 
-class EnsimeInspectTypeAtPointStatus(RunningProjectFileOnly, EnsimeTextCommand, EnsimeHandleSymbolInfo, EnsimeInspectType):
+class EnsimeInspectTypeAtPointStatus(RunningProjectFileOnly, EnsimeTextCommand, EnsimeHandleSymbolInfo,
+                                     EnsimeInspectType):
     def run(self, edit, target=None):
         pos = int(target or self.v.sel()[0].begin())
         self.rpc.type_at_point(self.v.file_name(), pos, self.handle_reply)
 
     def handle_reply(self, tpe):
-        self.log_client("EnsimeInspectTypeStatus.handleReply: " + str(tpe))
+        self.logger.info("EnsimeInspectTypeStatus.handleReply: " + str(tpe))
         msg = self.parse_tpe(tpe, is_tooltip=False)
         if msg:
             self.status_message(msg)
@@ -1584,6 +1625,9 @@ class EnsimeTypecheckFull(EnsimeTextCommand):
 # common superclass to make refactoring definitions a little less boiler-platey
 class EnsimeRefactoring(RunningProjectFileOnly, EnsimeTextCommand):
 
+    def refactoring_symbol(self):
+        raise Exception("abstract method: EnsimeRefactoring.refactoring_symbol")
+
     def __nextRefactorId(self):
         return hash(uuid.uuid4())
 
@@ -1596,7 +1640,8 @@ class EnsimeRefactoring(RunningProjectFileOnly, EnsimeTextCommand):
 
     def handle_refactor_prepare_response(self, response):
         if response.done:
-            self.rpc.exec_refactor(self._currentRefactorId, sym(self.refactoring_symbol()), self.handle_refactor_response)
+            self.rpc.exec_refactor(self._currentRefactorId, sym(self.refactoring_symbol()),
+                                   self.handle_refactor_response)
         elif response.reason.find("FreshRunReq") >= 0:
             self.status_message("Refactor failed, please save file and try again")
         else:
@@ -1734,7 +1779,8 @@ class EnsimeToggleBreakpoint(ProjectFileOnly, EnsimeTextCommand):
             zb_line, _ = self.v.rowcol(self.v.sel()[0].begin())
             line = zb_line + 1
             old_breakpoints = self.env.breakpoints
-            new_breakpoints = [b for b in self.env.breakpoints if not (same_paths(b.file_name, file_name) and b.line == line)]
+            new_breakpoints = [b for b in self.env.breakpoints
+                               if not (same_paths(b.file_name, file_name) and b.line == line)]
             if len(old_breakpoints) == len(new_breakpoints):
                 # add
                 new_breakpoints.append(dotsession.Breakpoint(file_name, line))
@@ -1855,8 +1901,8 @@ class EnsimeDoubleClick(EnsimeSloppyMouseCommand):
 
 
 class Debugger(EnsimeCommon):
-    def __init__(self, env):
-        super(Debugger, self).__init__(env.w)
+    def __init__(self, env_inst):
+        super(Debugger, self).__init__(env_inst.w)
 
     def shutdown(self, erase_dashboard=False):
         self.env.profile = None

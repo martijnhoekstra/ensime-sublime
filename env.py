@@ -1,14 +1,15 @@
 import sublime
 import threading
-import uuid
-import os
 from uuid import uuid4
 
-from . import paths, dotensime, dotsession
+from . import dotensime, dotsession
+from . import sexp
 from .paths import *
+
 
 envLock = threading.RLock()
 ensime_envs = {}
+
 
 
 def for_window(window):
@@ -27,11 +28,54 @@ def for_window(window):
     return None
 
 
+class NoteStorage(object):
+    def __init__(self):
+        self.data = []
+        self.normalized_cache = {}
+        self.per_file_cache = {}
+
+    def append(self, data):
+        self.data += data
+        for datum in data:
+            if datum.file_name not in self.normalized_cache:
+                self.normalized_cache[datum.file_name] = normalize_path(datum.file_name)
+            file_name = self.normalized_cache[datum.file_name]
+            if file_name not in self.per_file_cache:
+                self.per_file_cache[file_name] = []
+            self.per_file_cache[file_name].append(datum)
+
+    def filter(self, pred):
+        dropouts = set([self.normalized_cache[n.file_name] for n in [n for n in self.data if not pred(n)]])
+        # doesn't take into account pathological cases when a "*.scala" file
+        # is actually a symlink to something without a ".scala" extension
+        for file_name in list(self.per_file_cache):
+            if file_name in dropouts:
+                del self.per_file_cache[file_name]
+        self.data = list(filter(pred, self.data))
+
+    def clear(self):
+        self.filter(lambda f: False)
+
+    def for_file(self, file_name):
+        if file_name not in self.normalized_cache:
+            self.normalized_cache[file_name] = normalize_path(file_name)
+        file_name = self.normalized_cache[file_name]
+        if file_name not in self.per_file_cache:
+            self.per_file_cache[file_name] = []
+        return self.per_file_cache[file_name]
+
+
 class EnsimeEnvironment(object):
     def __init__(self, window):
+        self.valid = False
+        self.settings = None
+        self.running = False
+        self.logger = None
+        self.breakpoints = []
         self.w = window
         self.recalc()  # might only see empty window.folders(), so initialized values will be bogus
         sublime.set_timeout(self.__deferred_init__, 500)
+
 
     def __deferred_init__(self):
         self.recalc()
@@ -69,25 +113,53 @@ class EnsimeEnvironment(object):
     def session_file(self):
         return (self.project_root + os.sep + ".ensime_session") if self.project_root else None
 
+    def create_logger(self, debug, cache_dir):
+        import logging
+        logger = logging.getLogger("ensime")
+        file_log_formatter = logging.Formatter("%(asctime)s [%(levelname)-5.5s]  %(message)s")
+        console_log_formatter = logging.Formatter("[Ensime] %(asctime)s [%(levelname)-5.5s]  %(message)s")
+
+        client_log_file = os.path.join(cache_dir, "ensime.log")
+
+        logger.handlers.clear()
+        file_handler = logging.FileHandler(client_log_file)
+        file_handler.setFormatter(file_log_formatter)
+        logger.addHandler(file_handler)
+
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(console_log_formatter)
+        logger.addHandler(console_handler)
+
+        if debug:
+            logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.INFO)
+
+        logger.info("New Logger initialised")
+        return logger
+
     def recalc(self):
         # plugin-wide stuff (immutable)
         self.settings = sublime.load_settings("Ensime.sublime-settings")
-        server_dir = self.settings.get("ensime_server_path", "Ensime" + os.sep + "server")
-        self.server_path = (server_dir
-                            if os.path.isabs(server_dir)
-                            else os.path.join(sublime.packages_path(), server_dir))
-        self.ensime_executable = (self.server_path + os.sep +
-                                  ("bin\\server.bat" if os.name == 'nt'
-                                   else "bin/server"))
-        self.ensime_args = ""  # TODO Should be loaded from .ensime file
-        self.plugin_root = os.path.normpath(os.path.join(self.server_path, ".."))
-        self.log_root = os.path.normpath(os.path.join(self.plugin_root, "logs"))
+        debug = self.settings.get("debug", False)
 
         # instance-specific stuff (immutable)
         (root, conf, _) = dotensime.load(self.w)
         self._project_root = root
         self._project_config = conf
+        self.dotensime_file = os.path.join(self.project_root, ".ensime")
         self.valid = self.project_config is not None
+
+        self.config_map = sexp.sexp_to_key_map(self.project_config)
+
+        self.cache_dir = self.config_map.get(":cache-dir")
+
+        from .ensime import mkdir_p
+
+        # ensure the cache_dir exists otherwise log initialisation will fail
+        mkdir_p(self.cache_dir)
+        if self.logger is None:
+            self.logger = self.create_logger(debug, self.cache_dir)
 
         # system stuff (mutable)
         self.session_id = uuid4()
@@ -95,45 +167,8 @@ class EnsimeEnvironment(object):
         self.controller = None  # injected by EnsimeStartup to ensure smooth reloading
         self.compiler_ready = False
 
-        # TODO: find a better place for this beast
-        class NoteStorage(object):
-            def __init__(self):
-                self.data = []
-                self.normalized_cache = {}
-                self.per_file_cache = {}
-
-            def append(self, data):
-                self.data += data
-                for datum in data:
-                    if not datum.file_name in self.normalized_cache:
-                        self.normalized_cache[datum.file_name] = normalize_path(datum.file_name)
-                    file_name = self.normalized_cache[datum.file_name]
-                    if not file_name in self.per_file_cache:
-                        self.per_file_cache[file_name] = []
-                    self.per_file_cache[file_name].append(datum)
-
-            def filter(self, pred):
-                dropouts = set([self.normalized_cache[n.file_name] for n in [n for n in self.data if not pred(n)]])
-                # doesn't take into account pathological cases when a "*.scala" file
-                # is actually a symlink to something without a ".scala" extension
-                for file_name in list(self.per_file_cache):
-                    if file_name in dropouts:
-                        del self.per_file_cache[file_name]
-                self.data = list(filter(pred, self.data))
-
-            def clear(self):
-                self.filter(lambda f: False)
-
-            def for_file(self, file_name):
-                if not file_name in self.normalized_cache:
-                    self.normalized_cache[file_name] = normalize_path(file_name)
-                file_name = self.normalized_cache[file_name]
-                if not file_name in self.per_file_cache:
-                    self.per_file_cache[file_name] = []
-                return self.per_file_cache[file_name]
-
         # core stuff (mutable)
-        self._notes = NoteStorage()
+        self.notes_storage = NoteStorage()
         self.notee = None
         # Tracks the most recent completion prefix that has been shown to yield empty
         # completion results. Use this so we don't repeatedly hit ensime for results
@@ -209,6 +244,6 @@ class EnsimeEnvironment(object):
         return session
 
     def save_session(self):
-        session = dotsession.load(self) or dotsession.Session(breakpoints=[], launches=[], current_launch=None)
+        session = dotsession.load(self) or dotsession.Session(breakpoints=[], launches=[], launch_key=None)
         session.breakpoints = self.breakpoints
         dotsession.save(self, session)

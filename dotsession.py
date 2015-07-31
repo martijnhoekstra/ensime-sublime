@@ -1,5 +1,4 @@
 import sublime
-import os
 import sys
 import traceback
 import json
@@ -92,9 +91,11 @@ def load(env):
                     contents = f.read()
                     session = json.loads(contents)
             session = session or {}
-            breakpoints = [Breakpoint(decode_path(b.get("file_name")), b.get("line")) for b in session.get("breakpoints", [])]
+            breakpoints = [Breakpoint(decode_path(b.get("file_name")), b.get("line")) for b in
+                           session.get("breakpoints", [])]
             breakpoints = [b for b in breakpoints if b.is_meaningful()]
-            launches_list = [Launch(c.get("name"), c.get("main_class"), c.get("args"), c.get("remote_address")) for c in session.get("launch_configs", [])]
+            launches_list = [Launch(c.get("name"), c.get("main_class"), c.get("args"), c.get("remote_address")) for c in
+                             session.get("launch_configs", [])]
             launches = {}
             # todo. this might lose user data
             for c in launches_list:
@@ -114,10 +115,10 @@ def load(env):
 def save(env, data):
     file_name = location(env)
     if file_name:
-        session = {}
-        session["breakpoints"] = [{"file_name": encode_path(b.file_name), "line": b.line} for b in data.breakpoints]
-        session["launch_configs"] = [{"name": c.name, "main_class": c.main_class, "args": c.args, "remote_address": c.remote_address} for c in list(data.launches.values())]
-        session["current_launch_config"] = data.launch_key
+        session = {"breakpoints": [{"file_name": encode_path(b.file_name), "line": b.line} for b in data.breakpoints],
+                   "launch_configs": [{"name": c.name, "main_class": c.main_class, "args": c.args,
+                                       "remote_address": c.remote_address} for c in list(data.launches.values())],
+                   "current_launch_config": data.launch_key}
         if not session["launch_configs"]:
             # create a dummy launch config, so that the user has easier time filling in the config
             session["launch_configs"] = [{"name": "", "main_class": "", "args": "", "remote_address": ""}]
@@ -175,7 +176,8 @@ def load_launch(env):
             launch_description = "the entry named \"" + session.launch_key + "\""
         else:
             launch_description = "the default unnamed entry"
-        message += "This error happened because " + launch_description + " in the \"launch_configs\" field of the launch configuration "
+        message += "This error happened because " + launch_description + \
+                   " in the \"launch_configs\" field of the launch configuration "
         message += "has neither the \"main_class\", nor the \"remote_address\" attribute set."
         message += "\n\n"
         message += "Sublime will now open the configuration file for you to fix. Do you wish to proceed?"
