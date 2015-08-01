@@ -70,5 +70,13 @@
   {
     "caption": "Ensime: Inline Local",
     "command": "ensime_inline_local"
+  },
+  {
+    "caption": "Ensime: Extract Local",
+    "command": "ensime_extract_local"
+  },
+  {
+    "caption": "Ensime: Extract Method",
+    "command": "ensime_extract_method"
   }
 ]
