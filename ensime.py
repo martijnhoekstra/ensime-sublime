@@ -5,6 +5,7 @@ from sublime_plugin import *
 import os, threading, socket, getpass, signal, glob, errno
 import subprocess, tempfile, datetime, time, json, zipfile
 import functools, inspect, traceback, random, re, sys
+import uuid
 from functools import partial as bind
 from os import path
 from .paths import *
@@ -1464,14 +1465,23 @@ class EnsimeGoToDefinition(RunningProjectFileOnly, EnsimeTextCommand):
 # common superclass to make refactoring definitions a little less boiler-platey
 class EnsimeRefactoring(RunningProjectFileOnly, EnsimeTextCommand):
 
+    def __nextRefactorId(self):
+        return hash(uuid.uuid4())
+
     def run(self, edit, target=None):
         pos = int(target or self.v.sel()[0].begin())
+        self._currentRefactorId = self.__nextRefactorId()
         if self.v.is_dirty():
             self.v.run_command('save')
         self.invoke_refactoring(pos)
 
     def handle_refactor_prepare_response(self, response):
-        self.rpc.exec_refactor(1, sym(self.refactoring_symbol()), self.handle_refactor_response)
+        if response.done:
+            self.rpc.exec_refactor(self._currentRefactorId, sym(self.refactoring_symbol()), self.handle_refactor_response)
+        elif response.reason.find("FreshRunReq") >= 0:
+            self.status_message("Refactor failed, please save file and try again")
+        else:
+            self.status_message("Refactor failed: " + response.reason)
 
     def handle_refactor_response(self, tpe):
         view = self.v
@@ -1513,9 +1523,10 @@ class EnsimeAddImport(EnsimeRefactoring):
 
         def do_refactor(i):
             if i > -1:
-                params = [sym('qualifiedName'), names[i], sym('file'), self.v.file_name(), sym('start'), 0, sym('end'),
-                          0]
-                self.rpc.prepare_refactor(1, sym(self.refactoring_symbol()), params, False, self.handle_refactor_prepare_response)
+                params = [sym('qualifiedName'), names[i], sym('file'), self.v.file_name(),
+                          sym('start'), 0, sym('end'), 0]
+                self.rpc.prepare_refactor(self._currentRefactorId, sym(self.refactoring_symbol()),
+                                          params, False, self.handle_refactor_prepare_response)
 
         self.v.window().show_quick_panel(names, do_refactor)
 
@@ -1527,7 +1538,20 @@ class EnsimeOrganizeImports(EnsimeRefactoring):
 
     def invoke_refactoring(self, pos):
         params = [sym('file'), self.v.file_name()]
-        self.rpc.prepare_refactor(1, sym(self.refactoring_symbol()), params, False, self.handle_refactor_prepare_response)
+        self.rpc.prepare_refactor(self._currentRefactorId, sym(self.refactoring_symbol()), params, False,
+                                  self.handle_refactor_prepare_response)
+
+
+class EnsimeInlineLocal(EnsimeRefactoring):
+
+    def refactoring_symbol(self):
+        return 'inlineLocal'
+
+    def invoke_refactoring(self, pos):
+        word = self.v.substr(self.v.word(pos))
+        params = [sym('file'), self.v.file_name(), sym('start'), pos, sym('end'), pos + len(word)]
+        self.rpc.prepare_refactor(self._currentRefactorId, sym(self.refactoring_symbol()), params,
+                                  False, self.handle_refactor_prepare_response)
 
 
 class EnsimeBuild(ProjectExists, EnsimeWindowCommand):
