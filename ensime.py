@@ -1554,6 +1554,51 @@ class EnsimeInlineLocal(EnsimeRefactoring):
                                   False, self.handle_refactor_prepare_response)
 
 
+class EnsimeExtractRefactoring(EnsimeRefactoring):
+
+    def invoke_refactoring(self, pos):
+        regions = [r for r in self.v.sel()]
+        if len(regions) == 1:
+            region = regions[0]
+            if region.begin() == region.end():
+                self.status_message('Please select a region to extract')
+            else:
+                self.__region_begin = region.begin()
+                self.__region_end = region.end()
+                self.w.show_input_panel(self.extract_prompt_message(), '',
+                                        self.extract_local, None, None)
+        else:
+            self.status_message('Select a single region to extract')
+
+    def extract_local(self, arg):
+        params = [self.extract_sym(), arg, sym('file'), self.v.file_name(),
+                  sym('start'), self.__region_begin, sym('end'), self.__region_end]
+        self.rpc.prepare_refactor(self._currentRefactorId, sym(self.refactoring_symbol()), params,
+                                  False, self.handle_refactor_prepare_response)
+
+
+class EnsimeExtractLocal(EnsimeExtractRefactoring):
+    def refactoring_symbol(self):
+        return 'extractLocal'
+
+    def extract_prompt_message(self):
+        return 'Extracted val name: '
+
+    def extract_sym(self):
+        return sym('name')
+
+
+class EnsimeExtractMethod(EnsimeExtractRefactoring):
+    def refactoring_symbol(self):
+        return 'extractMethod'
+
+    def extract_prompt_message(self):
+        return 'Extracted method name: '
+
+    def extract_sym(self):
+        return sym('methodName')
+
+
 class EnsimeBuild(ProjectExists, EnsimeWindowCommand):
     def run(self):
         cmd = sbt_command("compile")  # TODO: make this configurable
