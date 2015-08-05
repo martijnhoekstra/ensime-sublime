@@ -11,6 +11,8 @@ from os import path
 from .paths import *
 from types import *
 import collections
+import re
+import html
 
 from . import env, dotensime, dotsession, rpc, sexp
 from .sexp import key, sym
@@ -1354,26 +1356,6 @@ class EnsimeAltClick(EnsimePreciseMouseCommand):
         self.v.run_command("ensime_inspect_type_at_point", {"target": target})
 
 
-class EnsimeInspectTypeAtPoint(RunningProjectFileOnly, EnsimeTextCommand):
-    def run(self, edit, target=None):
-        pos = int(target or self.v.sel()[0].begin())
-        self.rpc.type_at_point(self.v.file_name(), pos, self.handle_reply)
-
-    def handle_reply(self, tpe):
-        self.log_client("EnsimeInspectTypeAtPoint.handleReply: " + str(tpe))
-        if tpe and tpe.name != "<notype>":
-            if tpe.arrow_type:
-                # summary = "method type"
-                summary = tpe.name
-            else:
-                summary = tpe.full_name
-                if tpe.type_args:
-                    summary += ("[" + ", ".join([t.name for t in tpe.type_args]) + "]")
-            self.status_message(summary)
-        else:
-            self.status_message("Cannot find out type")
-
-
 class EnsimeCtrlClick(EnsimePreciseMouseCommand):
     def is_applicable(self):
         return self.env.settings.get("ctrl_click_goes_to_definition") and super(EnsimeCtrlClick, self).is_applicable()
@@ -1382,12 +1364,8 @@ class EnsimeCtrlClick(EnsimePreciseMouseCommand):
         self.v.run_command("ensime_go_to_definition", {"target": target})
 
 
-class EnsimeGoToDefinition(RunningProjectFileOnly, EnsimeTextCommand):
-    def run(self, edit, target=None):
-        pos = int(target or self.v.sel()[0].begin())
-        self.rpc.symbol_at_point(self.v.file_name(), pos, self.handle_reply)
-
-    def handle_reply(self, info):
+class EnsimeHandleSymbolInfo(EnsimeCommon):
+    def handle_symbol_info(self, info):
         if info and info.decl_pos:
             # fails from time to time, because sometimes self.w is None
             # v = self.w.open_file(info.decl_pos.file_name)
@@ -1460,6 +1438,61 @@ class EnsimeGoToDefinition(RunningProjectFileOnly, EnsimeTextCommand):
         v.sel().clear()
         v.sel().add(region.begin())
         v.show(region)
+
+
+class EnsimeInspectTypeAtPoint(RunningProjectFileOnly, EnsimeTextCommand, EnsimeHandleSymbolInfo):
+    tuple_regex = re.compile("^Tuple\d+")
+
+    def run(self, edit, target=None):
+        pos = int(target or self.v.sel()[0].begin())
+        self.rpc.type_at_point(self.v.file_name(), pos, self.handle_reply)
+
+    def handle_reply(self, tpe):
+        self.log_client("EnsimeInspectTypeAtPoint.handleReply: " + str(tpe))
+        summary = self.parse_tpe_link(tpe)
+        if summary:
+            font_size = sublime.load_settings("Preferences.sublime-settings").get("font_size", 14)
+            self.w.active_view().show_popup(
+                "<div style=font-size:{0}px>{1}</div>".format(font_size, summary),
+                on_navigate=bind(self.goto_symbol),
+                max_width=font_size * 80,
+                max_height=font_size * 4
+            )
+        else:
+            self.status_message("Cannot find out type")
+
+    def goto_symbol(self, symbol):
+        self.rpc.symbol_by_name(symbol, [], [], self.handle_symbol_info)
+
+    # Going to generate the HTML string to put the links in
+    def parse_tpe_link(self, tpe):
+        if tpe and tpe.name != "<notype>":
+            if tpe.arrow_type:
+                # summary = "method type"
+                type_info = tpe.result_type
+            else:
+                type_info = tpe
+
+            if EnsimeInspectTypeAtPoint.tuple_regex.match(type_info.name):
+                begin_sep, end_sep = "(", ")"
+                markup = ""
+            else:
+                begin_sep, end_sep = "[", "]"
+                full_name, name = html.escape(type_info.full_name), html.escape(type_info.name)
+                markup = "<a href={0}>{1}</a>".format(full_name, name)
+
+            if type_info.type_args:
+                markup += begin_sep + ", ".join([self.parse_tpe_link(t) for t in type_info.type_args]) + end_sep
+
+            return markup
+
+        return None
+
+
+class EnsimeGoToDefinition(RunningProjectFileOnly, EnsimeTextCommand, EnsimeHandleSymbolInfo):
+    def run(self, edit, target=None):
+        pos = int(target or self.v.sel()[0].begin())
+        self.rpc.symbol_at_point(self.v.file_name(), pos, self.handle_symbol_info)
 
 
 # common superclass to make refactoring definitions a little less boiler-platey
