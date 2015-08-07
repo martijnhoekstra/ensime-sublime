@@ -492,6 +492,10 @@ class Rpc(object):
     def symbol_at_point(self, file_name, position):
         pass
 
+    @async_rpc(SymbolInfo.parse)
+    def symbol_by_name(self, symbol, token, t):
+        pass
+
     @async_rpc(SymbolSearchResults.parse_list)
     def import_suggestions(self, file_name, position, type_names, max_results):
         pass

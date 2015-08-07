@@ -11,6 +11,8 @@ from os import path
 from .paths import *
 from types import *
 import collections
+import re
+import html
 
 from . import env, dotensime, dotsession, rpc, sexp
 from .sexp import key, sym
@@ -1346,32 +1348,20 @@ class Notes(EnsimeToolView):
         return "\n".join(lines)
 
 
+class EnsimeSingleClick(EnsimePreciseMouseCommand):
+    def is_applicable(self):
+        return self.env.settings.get("single_click_inspects_type_at_point") and super(EnsimeSingleClick, self).is_applicable()
+
+    def run(self, target):
+        self.v.run_command("ensime_inspect_type_at_point_status", {"target": target})
+
+
 class EnsimeAltClick(EnsimePreciseMouseCommand):
     def is_applicable(self):
         return self.env.settings.get("alt_click_inspects_type_at_point") and super(EnsimeAltClick, self).is_applicable()
 
     def run(self, target):
-        self.v.run_command("ensime_inspect_type_at_point", {"target": target})
-
-
-class EnsimeInspectTypeAtPoint(RunningProjectFileOnly, EnsimeTextCommand):
-    def run(self, edit, target=None):
-        pos = int(target or self.v.sel()[0].begin())
-        self.rpc.type_at_point(self.v.file_name(), pos, self.handle_reply)
-
-    def handle_reply(self, tpe):
-        self.log_client("EnsimeInspectTypeAtPoint.handleReply: " + str(tpe))
-        if tpe and tpe.name != "<notype>":
-            if tpe.arrow_type:
-                # summary = "method type"
-                summary = tpe.name
-            else:
-                summary = tpe.full_name
-                if tpe.type_args:
-                    summary += ("[" + ", ".join([t.name for t in tpe.type_args]) + "]")
-            self.status_message(summary)
-        else:
-            self.status_message("Cannot find out type")
+        self.v.run_command("ensime_inspect_type_at_point_tooltip", {"target": target})
 
 
 class EnsimeCtrlClick(EnsimePreciseMouseCommand):
@@ -1382,12 +1372,8 @@ class EnsimeCtrlClick(EnsimePreciseMouseCommand):
         self.v.run_command("ensime_go_to_definition", {"target": target})
 
 
-class EnsimeGoToDefinition(RunningProjectFileOnly, EnsimeTextCommand):
-    def run(self, edit, target=None):
-        pos = int(target or self.v.sel()[0].begin())
-        self.rpc.symbol_at_point(self.v.file_name(), pos, self.handle_reply)
-
-    def handle_reply(self, info):
+class EnsimeHandleSymbolInfo(EnsimeCommon):
+    def handle_symbol_info(self, info):
         if info and info.decl_pos:
             # fails from time to time, because sometimes self.w is None
             # v = self.w.open_file(info.decl_pos.file_name)
@@ -1460,6 +1446,80 @@ class EnsimeGoToDefinition(RunningProjectFileOnly, EnsimeTextCommand):
         v.sel().clear()
         v.sel().add(region.begin())
         v.show(region)
+
+
+class EnsimeInspectType:
+    tuple_regex = re.compile("^Tuple\d+")
+
+    # is_tooltip param is a boolean which determines if either a status_message string
+    # or tooltip is generated
+    def parse_tpe(self, tpe, is_tooltip):
+        if tpe and tpe.name != "<notype>":
+            if tpe.arrow_type:
+                type_info = tpe.result_type
+            else:
+                type_info = tpe
+
+            if EnsimeInspectType.tuple_regex.match(type_info.name):
+                begin, end = '(', ')'
+                res = ""
+            else:
+                begin, end = '[', ']'
+                full_name, name = type_info.full_name, type_info.name
+                if is_tooltip:
+                    res = "<a href={0}>{1}</a>".format(html.escape(full_name), html.escape(name))
+                else:
+                    res = name
+
+            if type_info.type_args:
+                res += begin + ", ".join([self.parse_tpe(t, is_tooltip) for t in type_info.type_args]) + end
+
+            return res
+
+        return None
+
+
+class EnsimeInspectTypeAtPointTooltip(RunningProjectFileOnly, EnsimeTextCommand, EnsimeHandleSymbolInfo, EnsimeInspectType):
+    def run(self, edit, target=None):
+        pos = int(target or self.v.sel()[0].begin())
+        self.rpc.type_at_point(self.v.file_name(), pos, self.handle_reply)
+
+    def handle_reply(self, tpe):
+        self.log_client("EnsimeInspectTypeTooltip.handleReply: " + str(tpe))
+        markup = self.parse_tpe(tpe, is_tooltip=True)
+        if tpe:
+            font_size = sublime.load_settings("Preferences.sublime-settings").get("font_size", 14)
+            self.w.active_view().show_popup(
+                "<div style=font-size:{0}px>{1}</div>".format(font_size, markup),
+                on_navigate=bind(self.go_to_symbol),
+                max_width=font_size * 80,
+                max_height=font_size * 4
+            )
+        else:
+            self.status_message("Cannot find out type")
+
+    def go_to_symbol(self, symbol):
+        self.rpc.symbol_by_name(symbol, [], [], self.handle_symbol_info)
+
+
+class EnsimeInspectTypeAtPointStatus(RunningProjectFileOnly, EnsimeTextCommand, EnsimeHandleSymbolInfo, EnsimeInspectType):
+    def run(self, edit, target=None):
+        pos = int(target or self.v.sel()[0].begin())
+        self.rpc.type_at_point(self.v.file_name(), pos, self.handle_reply)
+
+    def handle_reply(self, tpe):
+        self.log_client("EnsimeInspectTypeStatus.handleReply: " + str(tpe))
+        msg = self.parse_tpe(tpe, is_tooltip=False)
+        if msg:
+            self.status_message(msg)
+        else:
+            self.status_message("Cannot find out type")
+
+
+class EnsimeGoToDefinition(RunningProjectFileOnly, EnsimeTextCommand, EnsimeHandleSymbolInfo):
+    def run(self, edit, target=None):
+        pos = int(target or self.v.sel()[0].begin())
+        self.rpc.symbol_at_point(self.v.file_name(), pos, self.handle_symbol_info)
 
 
 # common superclass to make refactoring definitions a little less boiler-platey
