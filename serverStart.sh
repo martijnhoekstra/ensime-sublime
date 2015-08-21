@@ -19,8 +19,11 @@ if [ "$(uname)" == "Darwin" ]; then # Mac
 elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
   ENSIME_CONFIG=`readlink -f $1`
 elif [ "$(expr substr $(uname -s) 1 10)" == "MINGW32_NT" ]; then
-  echo "Dont know how to resolve ensime file path for windows"
-  exit 1
+  ENSIME_REL_PATH=`echo $1 | sed 's/\\.ensime//'`
+  pushd "$ENSIME_REL_PATH"
+  ENSIME_ABS_PATH=`pwd`
+  popd
+  ENSIME_CONFIG="${ENSIME_ABS_PATH}/.ensime"
 fi
 
 echo "ENSIME_CONFIG=$ENSIME_CONFIG"
