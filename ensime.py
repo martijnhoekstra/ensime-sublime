@@ -1177,7 +1177,7 @@ class Completer(EnsimeEventListener):
         section_param_strs = [[param[1] for param in params] for params in sections]
         section_strs = ["(" + ", ".join(tpes) + ")" for tpes in
                         section_param_strs]
-        return ", ".join(section_strs) + ": " + sig.result
+        return "".join(section_strs) + ": " + sig.result
 
     def _signature_snippet(self, sig):
         """Given a ensime CompletionSignature structure, returns a Sublime Text
@@ -1193,7 +1193,7 @@ class Completer(EnsimeEventListener):
                 param_snippets.append("${%s:%s:%s}" % (i, name, tpe))
                 i += 1
             section_snippets.append("(" + ", ".join(param_snippets) + ")")
-        return ", ".join(section_snippets)
+        return "".join(section_snippets)
 
     def _completion_response(self, ensime_completions):
         """Transform list of completions from ensime API to a the structure
