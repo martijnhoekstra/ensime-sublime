@@ -1460,16 +1460,24 @@ class EnsimeInspectType:
             else:
                 type_info = tpe
 
+            type_desc = tpe.name
+
             if EnsimeInspectType.tuple_regex.match(type_info.name):
                 begin, end = '(', ')'
                 res = ""
             else:
                 begin, end = '[', ']'
                 full_name, name = type_info.full_name, type_info.name
+                last_paren = type_desc.rfind(')')
+                type_desc_sans_return = type_desc[0:last_paren+1]
                 if is_tooltip:
                     res = "<a href={0}>{1}</a>".format(html.escape(full_name), html.escape(name))
+                    if type_desc_sans_return:
+                        res = "{0}: {1}".format(html.escape(type_desc_sans_return), res)
                 else:
                     res = name
+                    if type_desc_sans_return:
+                        res = "{0}: {1}".format(type_desc_sans_return, res)
 
             if type_info.type_args:
                 res += begin + ", ".join([self.parse_tpe(t, is_tooltip) for t in type_info.type_args]) + end
