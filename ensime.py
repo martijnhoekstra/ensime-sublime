@@ -483,19 +483,21 @@ class ClientSocket(EnsimeCommon):
 
     def connect(self):
         self._connect_lock.acquire()
+        host = "127.0.0.1"
         try:
             s = socket.socket()
             s.settimeout(self.timeout)
-            s.connect(("127.0.0.1", self.port))
+            s.connect((host, self.port))
             s.settimeout(None)
             self.socket = s
             self.connected = True
             self.start_receiving()
+            self.status_message("Successfully connected to Ensime server at " + host + ":" + str(self.port))
             return s
         except socket.error as e:
             self.connected = False
             self.log_client("Cannot connect to Ensime server:  " + str(e.args))
-            self.status_message("Cannot connect to Ensime server")
+            self.status_message("Cannot connect to Ensime server at " + host + ":" + str(self.port) + " " + str(e.args))
             self.env.controller.shutdown()
         finally:
             self._connect_lock.release()
@@ -909,8 +911,8 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
     def ignition(self):
         timeout = self.env.settings.get("timeout_sync_roundtrip", 3)
         self.client = Client(self.owner, self.port_file, timeout)
-        self.client.startup()
         self.status_message("Initializing Ensime server... ")
+        self.client.startup()
 
     def shutdown(self):
         print("Controller shutdown() called")
