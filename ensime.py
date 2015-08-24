@@ -683,7 +683,7 @@ class Client(ClientListener, EnsimeCommon):
 
     @call_back_into_ui_thread
     def message_full_typecheck_finished(self, msg_id, payload):
-        pass
+        self.status_message("Full type check completed")
 
     @call_back_into_ui_thread
     def message_background_message(self, msg_id, payload):
@@ -1376,6 +1376,21 @@ class EnsimeCtrlClick(EnsimePreciseMouseCommand):
 
 class EnsimeHandleSymbolInfo(EnsimeCommon):
     def handle_symbol_info(self, info):
+        if not self.handle_symbol_info_inner(info):
+            #retry once
+            self.status_message("Please wait, trying harder to locate " + (str(info.name) if info else "symbol"))
+            self.rpc.typecheck_all(self.typecheck_all_finished)
+            pos = int(self.v.sel()[0].begin())
+            self.rpc.symbol_at_point(self.v.file_name(), pos, self.handle_symbol_info_no_retry)
+
+    def typecheck_all_finished(self, msg_id):
+        self.status_message("Full type check completed")
+
+    def handle_symbol_info_no_retry(self, info):
+        if not self.handle_symbol_info_inner(info):
+            self.v.run_command("goto_definition")
+
+    def handle_symbol_info_inner(self, info):
         if info and info.decl_pos:
             # fails from time to time, because sometimes self.w is None
             # v = self.w.open_file(info.decl_pos.file_name)
@@ -1437,12 +1452,16 @@ class EnsimeHandleSymbolInfo(EnsimeCommon):
                     offset_in_editor = self.v.text_point(zb_row, zb_col)
                     region_in_editor = Region(offset_in_editor, offset_in_editor)
                     sublime.set_timeout(bind(self._scroll_viewport, self.v, region_in_editor), 100)
+                    return True
                 else:
                     open_file()
+                    return True
             else:
                 self.status_message("Cannot open " + file_name)
+                return True
         else:
             self.status_message("Cannot locate " + (str(info.name) if info else "symbol"))
+            return False
 
     def _scroll_viewport(self, v, region):
         v.sel().clear()
@@ -1530,6 +1549,16 @@ class EnsimeGoToDefinition(RunningProjectFileOnly, EnsimeTextCommand, EnsimeHand
     def run(self, edit, target=None):
         pos = int(target or self.v.sel()[0].begin())
         self.rpc.symbol_at_point(self.v.file_name(), pos, self.handle_symbol_info)
+
+
+class EnsimeTypecheckFull(EnsimeTextCommand):
+    def run(self, edit, target=None):
+        self.status_message("Running full type check")
+        self.rpc.typecheck_all(self.typecheck_all_finished)
+
+    def typecheck_all_finished(self, msg_id):
+        self.status_message("Full type check completed")
+
 
 
 # common superclass to make refactoring definitions a little less boiler-platey
@@ -1636,11 +1665,11 @@ class EnsimeExtractRefactoring(EnsimeRefactoring):
                 self.__region_begin = region.begin()
                 self.__region_end = region.end()
                 self.w.show_input_panel(self.extract_prompt_message(), '',
-                                        self.extract_local, None, None)
+                                        self.extract_it, None, None)
         else:
             self.status_message('Select a single region to extract')
 
-    def extract_local(self, arg):
+    def extract_it(self, arg):
         params = [self.extract_sym(), arg, sym('file'), self.v.file_name(),
                   sym('start'), self.__region_begin, sym('end'), self.__region_end]
         self.rpc.prepare_refactor(self._currentRefactorId, sym(self.refactoring_symbol()), params,

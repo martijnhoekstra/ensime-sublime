@@ -477,6 +477,10 @@ class Rpc(object):
         pass
 
     @async_rpc()
+    def typecheck_all(self):
+        pass
+
+    @async_rpc()
     def patch_source(self, file_name, edits):
         pass
 
