@@ -683,7 +683,7 @@ class Client(ClientListener, EnsimeCommon):
 
     @call_back_into_ui_thread
     def message_full_typecheck_finished(self, msg_id, payload):
-        self.status_message("Full type check completed")
+        pass
 
     @call_back_into_ui_thread
     def message_background_message(self, msg_id, payload):
@@ -1558,7 +1558,6 @@ class EnsimeTypecheckFull(EnsimeTextCommand):
 
     def typecheck_all_finished(self, msg_id):
         self.status_message("Full type check completed")
-
 
 
 # common superclass to make refactoring definitions a little less boiler-platey
