@@ -1508,10 +1508,12 @@ class EnsimeInspectType:
                 begin, end = '[', ']'
                 full_name, name = type_info.full_name, type_info.name
                 if is_tooltip:
+                    # grab any type args from the description first
+                    type_args = "" if type_desc[0] != '[' else html.escape(type_desc[0:type_desc.find('](') + 1])
                     param_section_list = "".join([self.format_param_list(ps, begin, end, is_tooltip) for ps in param_sections])
                     res = "<a href={0}>{1}</a>".format(html.escape(full_name), html.escape(name))
                     if param_section_list:
-                        res = "{0}: {1}".format(param_section_list, res)
+                        res = "{0}{1}: {2}".format(type_args, param_section_list, res)
                 else:
                     res = name
                     last_paren = type_desc.rfind(')')
