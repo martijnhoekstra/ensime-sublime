@@ -193,12 +193,17 @@ class Member(ActiveRecord):
 class ParamSectionInfo(ActiveRecord):
     def populate(self, m):
         self.is_implicit = bool(m[":is-implicit"]) if ":is-implicit" in m else False
-        self.params = Param.parse_list(m[":params"]) if ":params" in m else []
+        if ":params" in m and m[":params"]:
+            keyed_params = [{':param-name': p[0], ':param-type': p[1]} for p in m[":params"]]
+            self.params = [Param(kp) for kp in keyed_params]
+        else:
+            self.params = []
 
 
-class Param(ActiveRecord):
-    def populate(self, m):
-        pass
+class Param:
+    def __init__(self, m):
+        self.param_name = m[":param-name"]
+        self.param_type = TypeInfo.parse(m[":param-type"])
 
 
 class DebugEvent(ActiveRecord):
