@@ -24,6 +24,10 @@
     "command": "ensime_show_session"
   },
   {
+    "caption": "Ensime: Full Type Check",
+    "command": "ensime_typecheck_full"
+  },
+  {
     "caption": "Ensime: Build",
     "command": "ensime_build"
   },
