@@ -12,6 +12,7 @@
 # [1] https://github.com/paulp/sbt-extras/blob/master/sbt
 
 ENSIME_VERSION="0.9.10-SNAPSHOT"
+CLASSPATH_SEPARATOR=":"
 
 # borrowed from http://stackoverflow.com/questions/3466166/how-to-check-if-running-in-cygwin-mac-or-linux
 if [ "$(uname)" == "Darwin" ]; then # Mac
@@ -24,6 +25,7 @@ elif [ "$(expr substr $(uname -s) 1 10)" == "MINGW32_NT" ]; then
   ENSIME_ABS_PATH=`pwd`
   popd
   ENSIME_CONFIG="${ENSIME_ABS_PATH}/.ensime"
+  CLASSPATH_SEPARATOR=";"
 fi
 
 echo "ENSIME_CONFIG=$ENSIME_CONFIG"
@@ -109,7 +111,7 @@ cd "$RESOLUTION_DIR"
 echo "Running sbt saveClasspath"
 sbt update saveClasspath > "$CLASSPATH_LOG"
 
-CLASSPATH="$JDK_HOME/lib/tools.jar:`cat $CLASSPATH_FILE`"
+CLASSPATH="$JDK_HOME/lib/tools.jar$CLASSPATH_SEPARATOR`cat $CLASSPATH_FILE`"
 
 echo "  -> Starting ENSIME"
 cd "$ENSIME_CACHE"
