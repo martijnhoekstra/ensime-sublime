@@ -1472,13 +1472,31 @@ class EnsimeHandleSymbolInfo(EnsimeCommon):
 class EnsimeInspectType:
     tuple_regex = re.compile("^Tuple\d+")
 
+    def format_param(self, param, begin, end, is_tooltip):
+        res = "{0}: <a href={1}>{2}</a>".format(
+            html.escape(param.param_name),
+            html.escape(param.param_type.full_name),
+            html.escape(param.param_type.name)
+        )
+        if param.param_type.type_args:
+            res += begin + ", ".join([self.parse_tpe(t, is_tooltip) for t in param.param_type.type_args]) + end
+        return res
+
+    def format_param_list(self, param_section, begin, end, is_tooltip):
+        return "({0}{1})".format(
+            "implicit " if param_section.is_implicit else "",
+            ", ".join([self.format_param(p, begin, end, is_tooltip) for p in param_section.params])
+        )
+
     # is_tooltip param is a boolean which determines if either a status_message string
     # or tooltip is generated
     def parse_tpe(self, tpe, is_tooltip):
         if tpe and tpe.name != "<notype>":
             if tpe.arrow_type:
+                param_sections = tpe.param_sections
                 type_info = tpe.result_type
             else:
+                param_sections = []
                 type_info = tpe
 
             type_desc = tpe.name
@@ -1489,14 +1507,17 @@ class EnsimeInspectType:
             else:
                 begin, end = '[', ']'
                 full_name, name = type_info.full_name, type_info.name
-                last_paren = type_desc.rfind(')')
-                type_desc_sans_return = type_desc[0:last_paren+1]
                 if is_tooltip:
+                    # grab any type args from the description first
+                    type_args = "" if type_desc[0] != '[' else html.escape(type_desc[0:type_desc.find('](') + 1])
+                    param_section_list = "".join([self.format_param_list(ps, begin, end, is_tooltip) for ps in param_sections])
                     res = "<a href={0}>{1}</a>".format(html.escape(full_name), html.escape(name))
-                    if type_desc_sans_return:
-                        res = "{0}: {1}".format(html.escape(type_desc_sans_return), res)
+                    if param_section_list:
+                        res = "{0}{1}: {2}".format(type_args, param_section_list, res)
                 else:
                     res = name
+                    last_paren = type_desc.rfind(')')
+                    type_desc_sans_return = type_desc[0:last_paren+1]
                     if type_desc_sans_return:
                         res = "{0}: {1}".format(type_desc_sans_return, res)
 
