@@ -154,7 +154,7 @@ def read_keyword(form):
     s = ""
     while len(form) > 0:
         ch = form[0]
-        if not (ch.isalpha() or ch.isdigit() or ch == '-'):
+        if not (ch.isalpha() or ch.isdigit() or ch == '-' or ch == '.'):
             return (Keyword(":" + s), form)
         else:
             s = s + ch
