@@ -133,8 +133,8 @@ class TypeInfo(ActiveRecord):
     def populate(self, m):
         self.name = m[":name"]
         self.type_id = m[":type-id"]
-        isArrowType = bool(m[":arrow-type"]) if ":arrow-type" in m else False
-        if isArrowType:
+        is_arrow_type = bool(m[":arrow-type"]) if ":arrow-type" in m else False
+        if is_arrow_type:
             self.arrow_type = True
             self.result_type = TypeInfo.parse(m[":result-type"])
             self.param_sections = ParamSectionInfo.parse_list(m[":param-sections"]) if ":param-sections" in m else []

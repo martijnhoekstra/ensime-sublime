@@ -30,7 +30,6 @@ def load(window):
     """
     for f in locations(window):
         root = encode_path(os.path.dirname(f))
-        src = "()"
         with open(f) as open_file:
             src = open_file.read()
         try:
@@ -43,7 +42,14 @@ def load(window):
             return (root, conf, None)
         except:
             return (None, None, bind(error_bad_config, window, f, sys.exc_info()))
-    return (None, None, None)
+    return (None, None, bind(error_no_config, window))
+
+
+def error_no_config(window):
+    message = "Ensime has failed to find a .ensime file within this project\n"
+    message += "Create a .ensime file by running 'sbt gen-ensime' or equivalent for your build tool and rerun "
+    message += "Ensime: Startup"
+    sublime.error_message(message)
 
 
 def error_bad_config(window, f, ex):
