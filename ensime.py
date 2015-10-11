@@ -33,19 +33,24 @@ class EnsimeCommon(object):
         self.owner = owner
         if type(owner) == Window:
             self._env = env.for_window(owner)
-            self.logger = self._env.logger
-            self._recalc_session_id()
+            if self._env:
+                self.logger = self._env.logger
+                self._recalc_session_id()
             self.w = owner
         elif type(owner) == View:
             # todo. find out why owner.window() is sometimes None
             w = owner.window() or sublime.active_window()
             self._env = env.for_window(w)
-            self.logger = self._env.logger
-            self._recalc_session_id()
+            if self._env:
+                self.logger = self._env.logger
+                self._recalc_session_id()
             self.w = w
             self.v = owner
         else:
             raise Exception("unsupported owner of type: " + str(type(owner)))
+
+    def is_enabled(self):
+        return self.is_valid()
 
     @property
     def env(self):
@@ -1277,7 +1282,7 @@ class Completer(EnsimeEventListener):
 
 class EnsimeStartup(EnsimeWindowCommand):
     def is_enabled(self):
-        return not self.env.running
+        return bool(self.env and not self.env.running)
 
     def run(self):
         # refreshes the config (fixes #29)
@@ -1354,7 +1359,7 @@ class EnsimeHighlight(RunningOnly, EnsimeWindowCommand):
 
 class EnsimeShowNotes(EnsimeWindowCommand):
     def is_enabled(self):
-        return self.env.notes.can_show()
+        return bool(self.env and self.env.notes.can_show())
 
     def run(self):
         self.env.notes.show()
@@ -1838,7 +1843,7 @@ class EnsimeSmartRunDebugger(EnsimeWindowCommand):
         self.startup_attempts = 0
 
     def is_enabled(self):
-        return not self.env.profile or self.env.focus
+        return bool(self.env and (not self.env.profile or self.env.focus))
 
     def run(self):
         if not self.env.profile:
@@ -1858,7 +1863,7 @@ class EnsimeSmartRunDebugger(EnsimeWindowCommand):
 
 class EnsimeShowOutput(EnsimeWindowCommand):
     def is_enabled(self):
-        return self.env.output.can_show()
+        return bool(self.env and self.env.output.can_show())
 
     def run(self):
         self.env.output.show()
@@ -1866,7 +1871,7 @@ class EnsimeShowOutput(EnsimeWindowCommand):
 
 class EnsimeShowStack(EnsimeWindowCommand):
     def is_enabled(self):
-        return self.env.stack.can_show()
+        return bool(self.env and self.env.stack.can_show())
 
     def run(self):
         self.env.stack.show()
@@ -1875,7 +1880,7 @@ class EnsimeShowStack(EnsimeWindowCommand):
 
 class EnsimeShowWatches(EnsimeWindowCommand):
     def is_enabled(self):
-        return self.env.watches.can_show()
+        return bool(self.env and self.env.watches.can_show())
 
     def run(self):
         self.env.watches.show()
