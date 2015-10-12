@@ -21,7 +21,14 @@ def for_window(window):
             if not (window.id() in ensime_envs):
                 # protection against reentrant EnsimeEnvironment §s
                 ensime_envs[window.id()] = None
-                ensime_envs[window.id()] = EnsimeEnvironment(window)
+                try:
+                    ensime_envs[window.id()] = EnsimeEnvironment(window)
+                    print("Created ensime environment for ", window)
+                except:
+                    print("No ensime environment for ", window)
+            else:
+                print("Found existing ensime environment for ", window)
+
             return ensime_envs[window.id()]
         finally:
             envLock.release()
