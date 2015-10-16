@@ -14,22 +14,23 @@ ensime_envs = {}
 
 def for_window(window):
     if window:
-        if window.id() in ensime_envs:
-            return ensime_envs[window.id()]
+        window_key = (window.folders() or [window.id()])[0]
+        if window_key in ensime_envs:
+            return ensime_envs[window_key]
         envLock.acquire()
         try:
-            if not (window.id() in ensime_envs):
+            if not (window_key in ensime_envs):
                 # protection against reentrant EnsimeEnvironment §s
-                ensime_envs[window.id()] = None
+                ensime_envs[window_key] = None
                 try:
-                    ensime_envs[window.id()] = EnsimeEnvironment(window)
-                    print("Created ensime environment for ", window)
+                    ensime_envs[window_key] = EnsimeEnvironment(window)
+                    print("Created ensime environment for ", window_key)
                 except:
-                    print("No ensime environment for ", window)
+                    print("No ensime environment for ", window_key)
             else:
-                print("Found existing ensime environment for ", window)
+                print("Found existing ensime environment for ", window_key)
 
-            return ensime_envs[window.id()]
+            return ensime_envs[window_key]
         finally:
             envLock.release()
     return None
