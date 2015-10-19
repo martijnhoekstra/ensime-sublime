@@ -1008,7 +1008,7 @@ class Daemon(EnsimeEventListener):
     def on_post_save(self):
         if self.is_running() and self.in_project():
             self.rpc.typecheck_file(SourceFileInfo(self.v.file_name()))
-        if same_paths(self.v.file_name(), self.env.session_file):
+        if self.env and same_paths(self.v.file_name(), self.env.session_file):
             self.env.load_session()
             self.redraw_all_breakpoints()
 
