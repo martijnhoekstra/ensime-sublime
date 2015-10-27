@@ -837,11 +837,11 @@ class Server(ServerListener, EnsimeCommon):
         resolution_dir = self.cache_dir + os_sep + "Resolution"
         mkdir_p(resolution_dir)
         classpath_file = resolution_dir + os_sep + "classpath"
-        classpath_log = resolution_dir + os_sep + "sbt.log"
+        classpath_log = resolution_dir + os_sep + "saveClasspath.log"
         project_dir = resolution_dir + os_sep + "project"
         mkdir_p(project_dir)
         build_file = resolution_dir + os_sep + "build.sbt"
-        build_props_file = resolution_dir + os_sep + "build.properties"
+        build_props_file = resolution_dir + os_sep + "project" + os_sep + "build.properties"
 
         write_classpath_sbt_script(build_file, self.scala_version, self.ensime_version, classpath_file)
         write_build_props_file(build_props_file)
@@ -853,14 +853,18 @@ class Server(ServerListener, EnsimeCommon):
 
         if cmd:
             fn = bind(self.startup2)
-            exec_save_classpath(self.logger, cmd, resolution_dir, classpath_file, fn)
+            exec_save_classpath(self.logger, cmd, resolution_dir, classpath_file, classpath_log, fn)
 
     def startup2(self, classpath):
         """
         This function will be called by a background thread - bounce to the gui thread
-        :param classpath: The classpath returned from the exec_save_classpath
+        :param classpath: The classpath returned from the exec_save_classpath None if resolution failed
         """
-        sublime.set_timeout(bind(self.startup3, classpath), 0)
+        if classpath is not None:
+            sublime.set_timeout(bind(self.startup3, classpath), 0)
+        else:
+            # This should probably be a popup
+            self.logger.info("Failed to start")
 
     def startup3(self, classpath):
         os_sep = str(os.sep)

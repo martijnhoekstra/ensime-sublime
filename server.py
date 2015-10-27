@@ -23,18 +23,30 @@ def write_classpath_sbt_script(build_file, scala_version, ensime_version, classp
             |import sbt._
             |import IO._
             |import java.io._
+            |
             |scalaVersion := """ + '"' + scala_version + '"' + """
+            |
             |ivyScala := ivyScala.value map { _.copy(overrideScalaVersion = true) }
+            |
+            |// we don't need jcenter, so this speeds up resolution
+            |fullResolvers -= Resolver.jcenterRepo
+            |
             |// allows local builds of scala
             |resolvers += Resolver.mavenLocal
+            |
+            |// for java support
+            |resolvers += "NetBeans" at "http://bits.netbeans.org/nexus/content/groups/netbeans"
+            |
+            |// this is where the ensime-server snapshots are hosted
             |resolvers += Resolver.sonatypeRepo("snapshots")
-            |resolvers += "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/"
-            |resolvers += "Akka Repo" at "http://repo.akka.io/repository"
-            |libraryDependencies ++= Seq(
-            |   "org.ensime" %% "ensime" % """ + '"' + ensime_version + '"' + """,
-            |   "org.scala-lang" % "scala-compiler" % scalaVersion.value force(),
-            |   "org.scala-lang" % "scala-reflect" % scalaVersion.value force(),
-            |   "org.scala-lang" % "scalap" % scalaVersion.value force()
+            |
+            |libraryDependencies += "org.ensime" %% "ensime" % """ + '"' + ensime_version + '"' + """
+            |
+            |dependencyOverrides ++= Set(
+            |   "org.scala-lang" % "scala-compiler" % scalaVersion.value,
+            |   "org.scala-lang" % "scala-library" % scalaVersion.value,
+            |   "org.scala-lang" % "scala-reflect" % scalaVersion.value,
+            |   "org.scala-lang" % "scalap" % scalaVersion.value
             |)
             |val saveClasspathTask = TaskKey[Unit]("saveClasspath", "Save the classpath to a file")
             |saveClasspathTask := {
@@ -48,12 +60,12 @@ def write_classpath_sbt_script(build_file, scala_version, ensime_version, classp
 
 def write_build_props_file(build_props_file):
     with open(build_props_file, "w") as f:
-        f.write("""sbt.version=0.13.8\n""")
+        f.write("""sbt.version=0.13.9\n""")
 
 
-def exec_save_classpath(logger, sbt_cmd, working_dir, classpath_file, callback_fn):
+def exec_save_classpath(logger, sbt_cmd, working_dir, classpath_file, classpath_log, callback_fn):
     """
-    Run the sbt saveClasspath task (for starting the ensimeProcess) in a seperate thread calling back
+    Run the sbt saveClasspath task (for starting the ensimeProcess) in a separate thread calling back
     with the result.
     :param sbt_cmd: The command for running sbt
     :param working_dir: The working directory to run in
@@ -64,8 +76,7 @@ def exec_save_classpath(logger, sbt_cmd, working_dir, classpath_file, callback_f
     def worker():
         logger.info("Save classpath task running")
         cmd = sbt_cmd + ["saveClasspath"]
-        output_file_path = os.path.join(working_dir, "saveClasspath.log")
-        with open(output_file_path, "w") as output_file:
+        with open(classpath_log, "w") as output_file:
             res = subprocess.call(cmd, cwd=working_dir, stdout=output_file, stderr=subprocess.STDOUT)
             if res == 0:
                 with open(classpath_file, "r") as f:
@@ -73,7 +84,7 @@ def exec_save_classpath(logger, sbt_cmd, working_dir, classpath_file, callback_f
                 logger.info("Save classpath task completed successfully")
                 callback_fn(read_classpath)
             else:
-                logger.info("Save classpath task failed with error " + str(res) + " check " + str(output_file_path))
+                logger.info("Save classpath task failed with error " + str(res) + " check " + str(classpath_log))
                 callback_fn(None)
 
     _thread.start_new_thread(worker, ())
