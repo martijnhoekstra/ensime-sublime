@@ -525,8 +525,12 @@ class Client(ClientListener, EnsimeCommon):
         self.logger.info("Starting Ensime client (plugin version is " +
                          (self.env.settings.get("plugin_version") or "unknown") + ")")
         self.logger.info("Launching Ensime client socket at port " + str(self.port))
+        self.status_message("Starting Ensime...")
         self.socket = ClientSocket(self.owner, self.port, self.timeout, [self, self.env.controller])
-        return self.socket.connect()
+        s = self.socket.connect()
+        self.logger.info("Requesting connection info")
+        self.rpc.connection_info()
+        return s
 
     def shutdown(self):
         print("shutdown() called")
@@ -848,6 +852,7 @@ class Server(ServerListener, EnsimeCommon):
 
         self.logger.info("Resolving, log available in " + classpath_log)
         self.logger.info("Running sbt saveClasspath (in " + str(resolution_dir) + ")")
+        self.status_message("Running sbt saveClasspath (in" + str(resolution_dir) + ")")
 
         cmd = sbt_binary_and_flags()
 
@@ -876,6 +881,7 @@ class Server(ServerListener, EnsimeCommon):
         else:
             self.logger.error("Failed to generate classpath")
 
+        self.status_message("Classpath saved, starting ensime server")
         ensime_command = self.get_ensime_command()
         if ensime_command:
             self.logger.info("Starting Ensime server (plugin version is " + (

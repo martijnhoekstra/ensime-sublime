@@ -478,6 +478,10 @@ class Rpc(object):
         pass
 
     @async_rpc()
+    def connection_info(self):
+        pass
+
+    @async_rpc()
     def typecheck_file(self, file):
         pass
 
