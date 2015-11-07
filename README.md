@@ -59,23 +59,18 @@ or
 2. Add the below entry to the file:
 ```
 {
-	"connect_to_external_server": true,
+	"connect_to_external_server": false,
 }
 ```
 
 ### Start server and link in Sublime
-1. Run the following command in the terminal (both Linux and Mac) to start an Ensime instance for your project:
-
-```
-$ $PLUGIN/serverStart.sh $PROJECT/.ensime
-```
 
 Note that Ensime Server requires `grealpath` utility (run e.g. `brew install coreutils` to install it). 
 
-2. In Sublime Text create a [new project](http://sublimetext.userecho.com/topic/50034-project-menu-new-project/) with `$PROJECT`
+1. In Sublime Text create a [new project](http://sublimetext.userecho.com/topic/50034-project-menu-new-project/) with `$PROJECT`
 as a root (to do so: open a new window (`Ctrl+Shift+N` for Windows/Linux and `Cmd+Shift+N` for Mac) and open `$PROJECT` as a root).
 
-3. Open the Sublime command palette (typically bound to `Ctrl+Shift+P` on Windows/Linux and `Cmd+Shift+P` on Mac) and type `Ensime: Startup`.
+2. Open the Sublime command palette (typically bound to `Ctrl+Shift+P` on Windows/Linux and `Cmd+Shift+P` on Mac) and type `Ensime: Startup`.
 
 With luck - if you open a Scala file in your project, you should have error highlighting (on save) and jump to definition working!
 
