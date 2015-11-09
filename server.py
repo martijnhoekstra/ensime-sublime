@@ -19,6 +19,10 @@ def strip_margin(text):
 
 def write_classpath_sbt_script(build_file, scala_version, ensime_version, classpath_file):
     with open(build_file, "w") as f:
+        # the outputted path needs to be escaped
+        if os.name == "nt":
+            classpath_file = classpath_file.replace("\\", "\\\\")
+
         f.write(strip_margin("""
             |import sbt._
             |import IO._

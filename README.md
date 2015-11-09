@@ -55,6 +55,7 @@ or
 
 ### Configure Ensime-Sublime plugin
 
+If you are doing development on the plugin - add this step, so you can set it to try whilst working on the server.
 1. Open the Ensime plugin configuration at `Preference -> Package Settings -> Ensime -> Settings - User`.
 2. Add the below entry to the file:
 ```
@@ -65,14 +66,13 @@ or
 
 ### Start server and link in Sublime
 
-Note that Ensime Server requires `grealpath` utility (run e.g. `brew install coreutils` to install it). 
-
 1. In Sublime Text create a [new project](http://sublimetext.userecho.com/topic/50034-project-menu-new-project/) with `$PROJECT`
 as a root (to do so: open a new window (`Ctrl+Shift+N` for Windows/Linux and `Cmd+Shift+N` for Mac) and open `$PROJECT` as a root).
 
 2. Open the Sublime command palette (typically bound to `Ctrl+Shift+P` on Windows/Linux and `Cmd+Shift+P` on Mac) and type `Ensime: Startup`.
 
 With luck - if you open a Scala file in your project, you should have error highlighting (on save) and jump to definition working!
+If you have issues look at the controld (`Ctrl-`) or View-> Show Console for useful info.
 
 ## Additional Sublime Configurations
 
@@ -101,6 +101,7 @@ or `ensime` if it doesn't. Keep an eye on this message - it's an indicator of th
 If you find that some features of Ensime are not working properly (i.e. Go To Definition or Error Highlighting), then check the `Line Endings`
 setting in Sublime Text.  On Windows, the line endings is set to `Windows` by default. 
 Simply change this setting to `Unix` by going to `View > Line Endings` and selecting `Unix`.
+Also check the console for log information.
 
 ## Contacts
 
