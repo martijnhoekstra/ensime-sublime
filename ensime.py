@@ -1842,6 +1842,11 @@ class EnsimeStepOver(FocusedOnly, EnsimeWindowCommand):
         self.env.debugger.step_over()
 
 
+class EnsimeStepOut(FocusedOnly, EnsimeWindowCommand):
+    def run(self):
+        self.env.debugger.step_out()
+
+
 class EnsimeContinueDebugger(FocusedOnly, EnsimeWindowCommand):
     def run(self):
         self.env.debugger.continue_()
@@ -2047,6 +2052,9 @@ class Debugger(EnsimeCommon):
 
     def continue_(self):
         self.rpc.debug_continue(self.env.focus.thread_id)
+
+    def step_out(self):
+        self.rpc.debug_next(self.env.focus.thread_id)
 
 
 class Focus(object):
