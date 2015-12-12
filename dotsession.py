@@ -121,7 +121,9 @@ def save(env, data):
                    "current_launch_config": data.launch_key}
         if not session["launch_configs"]:
             # create a dummy launch config, so that the user has easier time filling in the config
-            session["launch_configs"] = [{"name": "", "main_class": "", "args": "", "remote_address": ""}]
+            session["launch_configs"] = [{"name": "Remote Debug", "main_class": "",
+                                          "args": "", "remote_address": "localhost:5005"}]
+            session["current_launch_config"] = "Remote Debug"
         contents = json.dumps(session, sort_keys=True, indent=2)
         with open(file_name, "w") as f:
             f.write(contents)
