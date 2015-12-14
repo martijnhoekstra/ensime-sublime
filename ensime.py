@@ -224,58 +224,6 @@ class EnsimeEventListenerProxy(EventListener):
         return self._invoke(view, "on_query_completions", prefix, locations)
 
 
-class EnsimeSloppyMouseCommand(EnsimeTextCommand):
-    def run(self, edit):
-        raise Exception("abstract method: EnsimeSloppyMouseCommand.run")
-
-
-class EnsimePreciseMouseCommand(EnsimeTextCommand):
-    def run(self, target):
-        raise Exception("abstract method: EnsimePreciseMouseCommand.run")
-
-    def is_applicable(self):
-        return self.is_running() and self.in_project()
-
-    def _run_underlying(self, args):
-        system_command = args["command"] if "command" in args else None
-        if system_command:
-            system_args = dict(list({"event": args["event"]}.items()) + list(args["args"].items()))
-            self.v.run_command(system_command, system_args)
-
-    # note the underscore in "run_"
-#    def run_(self, edit_token, args):
-    def run_(self, edit_token, args):
-        if self.is_applicable():
-            self.old_sel = [(r.a, r.b) for r in self.v.sel()]
-            # unfortunately, running an additive drag_select is our only way of getting the coordinates of the click
-            # I didn't find a way to convert args["event"]["x"] and args["event"]["y"] to text coordinates
-            # there are relevant APIs, but they refuse to yield correct results
-            self.v.run_command("drag_select", {"event": args["event"], "additive": True})
-            self.new_sel = [(r.a, r.b) for r in self.v.sel()]
-            self.diff = list((set(self.old_sel) - set(self.new_sel)) | (set(self.new_sel) - set(self.old_sel)))
-
-            if len(self.diff) == 0:
-                if len(self.new_sel) == 1:
-                    self.run(self.new_sel[0][0])
-                else:
-                    # this is a tough one
-                    # here's how we possibly could arrive here
-                    # we have a multi selection, and then ctrl+click on one the active cursors
-                    # there's no way we can guess the exact point of click, so we bail
-                    pass
-            elif len(self.diff) == 1:
-                sel = self.v.sel()
-                sel.clear()
-                sel.add(Region(self.diff[0][0], self.diff[0][1]))
-                self.run(self.diff[0][0])
-            else:
-                # this shouldn't happen
-                self.logger.warn("len(diff) > 1: command = " + str(type(self)) + ", old_sel = " + str(
-                    self.old_sel) + ", new_sel = " + str(self.new_sel))
-        else:
-            self._run_underlying(args)
-
-
 class ValidOnly:
     def is_enabled(self):
         return self.is_valid()
@@ -1402,31 +1350,6 @@ class Notes(EnsimeToolView):
         return "\n".join(lines)
 
 
-class EnsimeSingleClick(EnsimePreciseMouseCommand):
-    def is_applicable(self):
-        return self.env.settings.get("single_click_inspects_type_at_point") and \
-               super(EnsimeSingleClick, self).is_applicable()
-
-    def run(self, target):
-        self.v.run_command("ensime_inspect_type_at_point_status", {"target": target})
-
-
-class EnsimeAltClick(EnsimePreciseMouseCommand):
-    def is_applicable(self):
-        return self.env.settings.get("alt_click_inspects_type_at_point") and super(EnsimeAltClick, self).is_applicable()
-
-    def run(self, target):
-        self.v.run_command("ensime_inspect_type_at_point_tooltip", {"target": target})
-
-
-class EnsimeCtrlClick(EnsimePreciseMouseCommand):
-    def is_applicable(self):
-        return self.env.settings.get("ctrl_click_goes_to_definition") and super(EnsimeCtrlClick, self).is_applicable()
-
-    def run(self, target):
-        self.v.run_command("ensime_go_to_definition", {"target": target})
-
-
 class EnsimeHandleSymbolInfo(EnsimeCommon):
     def handle_symbol_info(self, info):
         if not self.handle_symbol_info_inner(info):
@@ -1901,23 +1824,26 @@ class EnsimeShowWatches(EnsimeWindowCommand):
         self.env.watches.show()
 
 
-class EnsimeDoubleClick(EnsimeSloppyMouseCommand):
+class EnsimeDebugDoubleClick(DebuggingOnly, EnsimeTextCommand):
+
     def calculate_handler(self):
-        if self.v.name() == ENSIME_NOTES_VIEW:
+        view_name = self.v.name()
+        if view_name == ENSIME_NOTES_VIEW:
             return self.env.notes
-        elif self.v.name() == ENSIME_OUTPUT_VIEW:
+        elif view_name == ENSIME_OUTPUT_VIEW:
             return self.env.output
-        elif self.v.name() == ENSIME_STACK_VIEW:
+        elif view_name == ENSIME_STACK_VIEW:
             return self.env.stack
-        elif self.v.name() == ENSIME_WATCHES_VIEW:
+        elif view_name == ENSIME_WATCHES_VIEW:
             return self.env.watches
         else:
             return None
 
-    def run(self, edit):
+    def run(self, edit, target=None):
         handler = self.calculate_handler()
         if handler:
             handler.handle_event("double_click", self.v.sel()[0].a)
+
 
 
 class Debugger(EnsimeCommon):
