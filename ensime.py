@@ -19,6 +19,7 @@ from types import *
 import collections
 import re
 import html
+import webbrowser
 
 from .server import *
 from . import env, dotensime, dotsession, rpc, sexp
@@ -458,10 +459,12 @@ class ClientSocket(EnsimeCommon):
 
 
 class Client(ClientListener, EnsimeCommon):
-    def __init__(self, owner, port_file, timeout):
+    def __init__(self, owner, port_file, http_port_file, timeout):
         super(Client, self).__init__(owner)
         with open(port_file) as f:
             self.port = int(f.read())
+        with open(http_port_file) as f:
+            self.http_port = int(f.read())
         self.timeout = timeout
         self.init_counters()
         methods = [m for m in inspect.getmembers(self, predicate=inspect.ismethod) if m[0].startswith("message_")]
@@ -677,6 +680,10 @@ class Client(ClientListener, EnsimeCommon):
         detail += "\n\nCheck the server log at " + str(os.path.join(self.env.log_root, "server.log")) + "."
         return detail
 
+    def open_uri(self, uri):
+        url = "http://localhost:" + str(self.http_port) + "/" + uri
+        webbrowser.open_new_tab(url)
+
 
 class ServerListener:
     def on_server_data(self, data):
@@ -874,14 +881,17 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
         self.client = None
         self.server = None
         self.port_file = None
+        self.http_port_file = None
 
     def startup(self):
         cache_dir = self.env.cache_dir
         port_file = path.join(cache_dir, "port")
+        http_port_file = path.join(cache_dir, "http")
         try:
             if not self.env.running:
                 if self.env.settings.get("connect_to_external_server", False):
                     self.port_file = port_file
+                    self.http_port_file = http_port_file
                     if not self.port_file:
                         message = "\"connect_to_external_server\" in your Ensime.sublime-settings is set to true, "
                         message += "however \"external_server_port_file\" is not specified. "
@@ -902,6 +912,7 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
                     sublime.set_timeout(self.ignition, 0)
                 else:
                     self.port_file = port_file
+                    self.http_port_file = http_port_file
                     self.server = Server(self.owner, port_file)
                     self.server.startup()  # delay handshake until the port number has been written
         except:
@@ -909,14 +920,14 @@ class Controller(EnsimeCommon, ClientListener, ServerListener):
             raise
 
     def on_server_data(self, data):
-        if not self.env.running and re.search("creating portfile", data):
+        if not self.env.running and re.search("creating portfile.*http", data):
             self.logger.info("SEEN port write")
             self.env.running = True
             sublime.set_timeout(self.ignition, 0)
 
     def ignition(self):
         timeout = self.env.settings.get("timeout_sync_roundtrip", 3)
-        self.client = Client(self.owner, self.port_file, timeout)
+        self.client = Client(self.owner, self.port_file, self.http_port_file, timeout)
         self.status_message("Initializing Ensime server... ")
         self.client.startup()
 
@@ -1543,6 +1554,21 @@ class EnsimeInspectTypeAtPointStatus(RunningProjectFileOnly, EnsimeTextCommand, 
             self.status_message(msg)
         else:
             self.status_message("Cannot find out type")
+
+
+class EnsimeBrowseScaladocAtPoint(RunningProjectFileOnly, EnsimeTextCommand):
+    def run(self, edit, target=None):
+        pos = int(target or self.v.sel()[0].begin())
+        self.rpc.doc_uri_at_point(self.v.file_name(), pos, self.handle_reply)
+
+    def handle_reply(self, uri):
+        if uri:
+            self.logger.info("EnsimeBrowseScaladocAtPoint.handleReply: " + str(uri))
+            self.env.controller.client.open_uri(uri)
+        else:
+            self.logger.info("Doc lookup failed")
+            self.status_message("Doc lookup failed")
+
 
 
 class EnsimeGoToDefinition(RunningProjectFileOnly, EnsimeTextCommand, EnsimeHandleSymbolInfo):
