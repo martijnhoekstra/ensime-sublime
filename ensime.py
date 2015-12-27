@@ -814,6 +814,8 @@ class Server(ServerListener, EnsimeCommon):
         if cmd:
             fn = bind(self.startup2)
             exec_save_classpath(self.logger, cmd, resolution_dir, classpath_file, classpath_log, fn)
+        else:
+            sublime.error_message("Could not find sbt. Please add sbt to your Sublime Text PATH.")
 
     def startup2(self, classpath):
         """
