@@ -73,7 +73,7 @@ Java and SBT should now be installed. The next step is to install Sublime Text (
 
 See [Troubleshooting](#troubleshooting) below to check whether Sublime Text can see `java` and `sbt`.
 
-### Set up Sublime Text
+### Set up ENSIME Sublime
 
 1. Install [Sublime Text 3](http://www.sublimetext.com/3)
    (if you do not have it installed already).
